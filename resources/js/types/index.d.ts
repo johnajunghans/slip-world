@@ -41,3 +41,22 @@ export interface User {
     updated_at: string;
     [key: string]: unknown; // This allows for additional properties...
 }
+
+export interface Category {
+    id: number;
+    user_id: number;
+    name: string;
+    description?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface Slip {
+    id: number;
+    content: string;
+    order: number;
+    category_id: number;
+    category?: Category;
+    created_at: string;
+    updated_at: string;
+}
