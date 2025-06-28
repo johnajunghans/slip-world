@@ -62,4 +62,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(Slip::class);
     }
+
+    /**
+     * Get the topics for the user.
+     */
+    public function topics(): HasMany
+    {
+        return $this->hasMany(Topic::class);
+    }
 }

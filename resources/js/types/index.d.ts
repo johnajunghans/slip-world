@@ -60,3 +60,13 @@ export interface Slip {
     created_at: string;
     updated_at: string;
 }
+
+export interface Topic {
+    id: number;
+    user_id: number;
+    name: string;
+    description?: string;
+    order: number;
+    created_at: string;
+    updated_at: string;
+}
