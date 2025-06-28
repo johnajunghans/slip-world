@@ -23,6 +23,9 @@
         "typescript-eslint": "^8.23.0"
     },
     "dependencies": {
+        "@atlaskit/pragmatic-drag-and-drop": "^1.7.4",
+        "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
+        "@atlaskit/pragmatic-drag-and-drop-react-drop-indicator": "^3.2.1",
         "@headlessui/react": "^2.2.0",
         "@inertiajs/react": "^2.0.0",
         "@radix-ui/react-avatar": "^1.1.3",
