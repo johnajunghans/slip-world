@@ -52,33 +52,73 @@ class SlipController extends Controller
                     }
                 },
             ],
-            'order' => 'nullable|integer|min:1',
+            'order' => 'nullable|integer|min:0',
         ]);
 
         DB::transaction(function () use ($request, $user) {
-            $insertOrder = $request->order;
+            $category = $user->categories()->findOrFail($request->category_id);
             
-            if ($insertOrder) {
-                // Insert at specific position - increment order of existing slips
-                $user->slips()
-                    ->where('category_id', $request->category_id)
-                    ->where('order', '>=', $insertOrder)
-                    ->increment('order');
+            if ($category->name === 'MAIN') {
+                // For main category, use unified order management
+                $this->insertInMainCategory($user, $request);
             } else {
-                // Append to end - get the next order number
-                $insertOrder = $user->slips()
-                    ->where('category_id', $request->category_id)
-                    ->max('order') + 1;
+                // For other categories, use existing logic
+                $this->insertInOtherCategory($user, $request);
             }
-
-            $user->slips()->create([
-                'content' => $request->content,
-                'category_id' => $request->category_id,
-                'order' => $insertOrder,
-            ]);
         });
 
         return redirect()->back()->with('success', 'Slip created successfully!');
+    }
+
+    private function insertInMainCategory($user, $request)
+    {
+        $insertPosition = $request->order ?? $this->getNextMainCategoryPosition($user);
+        
+        // Create the slip with temporary high order
+        $slip = $user->slips()->create([
+            'content' => $request->content,
+            'category_id' => $request->category_id,
+            'order' => 99999,
+        ]);
+
+        // Use the unified order management to place it correctly
+        app(ItemOrderController::class)->insertAtPosition(new \Illuminate\Http\Request([
+            'type' => 'slip',
+            'id' => $slip->id,
+            'position' => $insertPosition,
+        ]));
+    }
+
+    private function getNextMainCategoryPosition($user)
+    {
+        $mainCategory = $user->categories()->where('name', 'MAIN')->first();
+        $maxSlipOrder = $user->slips()->where('category_id', $mainCategory->id)->max('order') ?? -1;
+        $maxTopicOrder = $user->topics()->max('order') ?? -1;
+        
+        return max($maxSlipOrder, $maxTopicOrder) + 1;
+    }
+
+    private function insertInOtherCategory($user, $request)
+    {
+        // Existing logic for non-main categories
+        $insertOrder = $request->order;
+        
+        if ($insertOrder !== null) {
+            $user->slips()
+                ->where('category_id', $request->category_id)
+                ->where('order', '>=', $insertOrder)
+                ->increment('order');
+        } else {
+            $insertOrder = $user->slips()
+                ->where('category_id', $request->category_id)
+                ->max('order') + 1;
+        }
+
+        $user->slips()->create([
+            'content' => $request->content,
+            'category_id' => $request->category_id,
+            'order' => $insertOrder,
+        ]);
     }
 
     /**
@@ -121,7 +161,7 @@ class SlipController extends Controller
                     }
                 },
             ],
-            'order' => 'nullable|integer|min:1',
+            'order' => 'nullable|integer|min:0',
         ]);
 
         $slip->update($request->only(['content', 'category_id', 'order']));
@@ -145,7 +185,7 @@ class SlipController extends Controller
         $request->validate([
             'slips' => 'required|array',
             'slips.*.id' => 'required|integer|exists:slips,id',
-            'slips.*.order' => 'required|integer|min:1',
+            'slips.*.order' => 'required|integer|min:0',
         ]);
 
         DB::transaction(function () use ($request, $user) {
@@ -170,7 +210,27 @@ class SlipController extends Controller
     {
         $this->authorize('delete', $slip);
         
-        $slip->delete();
+        $user = Auth::user();
+        $mainCategory = $user->categories()->where('name', 'MAIN')->first();
+        
+        DB::transaction(function () use ($slip, $user, $mainCategory) {
+            $slipOrder = $slip->order;
+            $categoryId = $slip->category_id;
+            
+            // Delete the slip
+            $slip->delete();
+            
+            if ($mainCategory && $categoryId === $mainCategory->id) {
+                // For main category, recalculate all orders using unified system
+                app(ItemOrderController::class)->recalculateMainCategoryOrder(request());
+            } else {
+                // For other categories, decrement order of subsequent slips
+                $user->slips()
+                    ->where('category_id', $categoryId)
+                    ->where('order', '>', $slipOrder)
+                    ->decrement('order');
+            }
+        });
 
         // Return appropriate response based on request type
         if (request()->wantsJson()) {

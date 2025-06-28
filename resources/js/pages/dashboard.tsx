@@ -9,6 +9,7 @@ import { type BreadcrumbItem, type Slip, type Category, type Topic } from '@/typ
 import { Head, router } from '@inertiajs/react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
+import { useUnifiedOrder } from '@/hooks/use-unified-order';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -55,6 +56,19 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
         onReorder: setSlips,
     });
 
+    // Use unified order management
+    const { 
+        combinedItems, 
+        isReordering, 
+        moveItemToPosition 
+    } = useUnifiedOrder({
+        slips,
+        topics,
+        mainCategoryId: mainCategory?.id || 0,
+        onSlipsChange: setSlips,
+        onTopicsChange: setTopics,
+    });
+
     // Update slip category and place it at the top of the target category
     const updateSlipCategory = async (slipId: number, newCategoryId: number) => {
         try {
@@ -98,10 +112,6 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
             console.error('Failed to update slip category:', error);
         }
     };
-
-
-
-
 
     // Update local state when props change (e.g., after server updates)
     useEffect(() => {
@@ -150,8 +160,8 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
         router.delete(`/slips/${slip.id}`, {
             preserveScroll: true,
             onSuccess: () => {
-                // Remove the slip from local state immediately for better UX
-                setSlips(prevSlips => prevSlips.filter(s => s.id !== slip.id));
+                // Backend handles order recalculation, so just refresh the data
+                router.reload({ only: ['slips', 'topics'] });
             },
             onError: (errors) => {
                 console.error('Failed to delete slip:', errors);
@@ -164,8 +174,8 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
         router.delete(`/topics/${topic.id}`, {
             preserveScroll: true,
             onSuccess: () => {
-                // Remove the topic from local state immediately for better UX
-                setTopics(prevTopics => prevTopics.filter(t => t.id !== topic.id));
+                // Backend handles order recalculation, so just refresh the data
+                router.reload({ only: ['slips', 'topics'] });
             },
             onError: (errors) => {
                 console.error('Failed to delete topic:', errors);
@@ -173,8 +183,6 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
             }
         });
     };
-
-
 
     // Filter slips by category type
     const defaultCategoryIds = categories
@@ -195,85 +203,7 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
             .sort((a, b) => a.order - b.order);
     };
 
-    // Get MAIN category slips and topics
-    const mainSlips = getSlipsForCategory(MAIN_CATEGORY);
-    const mainTopics = topics.sort((a, b) => a.order - b.order);
-
-    // Combine slips and topics for main category, sorted by order
-    const mainItems = [...mainSlips, ...mainTopics].sort((a, b) => a.order - b.order);
-
-    // Helper function to reorder mixed items (slips and topics) in main category
-    const reorderMixedItems = async (sourceItem: Slip | Topic, targetItem: Slip | Topic) => {
-        const allMainItems = [...mainSlips, ...mainTopics].sort((a, b) => a.order - b.order);
-        const sourceIndex = allMainItems.findIndex(item => item.id === sourceItem.id);
-        const targetIndex = allMainItems.findIndex(item => item.id === targetItem.id);
-        
-        if (sourceIndex === -1 || targetIndex === -1) return;
-
-        // Reorder the items array
-        const reorderedItems = [...allMainItems];
-        const [removed] = reorderedItems.splice(sourceIndex, 1);
-        reorderedItems.splice(targetIndex, 0, removed);
-
-        // Update order values
-        const updatedItems = reorderedItems.map((item, index) => ({
-            ...item,
-            order: index + 1,
-        }));
-
-        // Separate slips and topics for API calls
-        const updatedSlips = updatedItems.filter(item => 'content' in item) as Slip[];
-        const updatedTopics = updatedItems.filter(item => 'name' in item) as Topic[];
-
-        // Update local state optimistically
-        setSlips(prevSlips => 
-            prevSlips.map(slip => {
-                const updated = updatedSlips.find(s => s.id === slip.id);
-                return updated || slip;
-            })
-        );
-        setTopics(updatedTopics);
-
-        // Make API calls to update order
-        try {
-            if (updatedSlips.length > 0) {
-                await fetch('/slips/reorder', {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                    },
-                    body: JSON.stringify({
-                        slips: updatedSlips.map(slip => ({
-                            id: slip.id,
-                            order: slip.order,
-                        })),
-                    }),
-                });
-            }
-
-            if (updatedTopics.length > 0) {
-                await fetch('/topics/reorder', {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                    },
-                    body: JSON.stringify({
-                        topics: updatedTopics.map(topic => ({
-                            id: topic.id,
-                            order: topic.order,
-                        })),
-                    }),
-                });
-            }
-        } catch (error) {
-            console.error('Failed to reorder items:', error);
-        }
-    };
-
+    // Handle drag and drop
     useEffect(() => {
         return monitorForElements({
             onDrop({ source, location }) {
@@ -301,6 +231,7 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
                 // Prefer category target if available (direct category drop)
                 if (categoryTarget) {
                     const targetCategoryId = categoryTarget.data.categoryId as number;
+                    const targetCategoryName = categoryTarget.data.categoryName as string;
                     
                     // Topics can only be placed in MAIN category
                     if (sourceTopic && targetCategoryId !== mainCategory?.id) {
@@ -311,9 +242,22 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
                         return;
                     }
 
-                    // Update slip category if it's different (only for slips)
-                    if (sourceSlip && sourceSlip.category_id !== targetCategoryId) {
-                        updateSlipCategory(sourceSlip.id, targetCategoryId);
+                    // For moves TO main category, use unified system
+                    if (targetCategoryName === 'MAIN') {
+                        if (sourceSlip) {
+                            // Get current position in main category to place at end
+                            const mainCategoryItems = combinedItems.length;
+                            const isMovingToMain = sourceSlip.category_id !== mainCategory?.id;
+                            moveItemToPosition(sourceSlip, mainCategoryItems, isMovingToMain);
+                        } else if (sourceTopic) {
+                            // Topics are already in main category, this shouldn't happen
+                            console.log('Topic already in main category');
+                        }
+                    } else {
+                        // For moves to other categories, use existing logic (slips only)
+                        if (sourceSlip && sourceSlip.category_id !== targetCategoryId) {
+                            updateSlipCategory(sourceSlip.id, targetCategoryId);
+                        }
                     }
                     
                     setDraggedSlip(null);
@@ -332,36 +276,44 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
                     if (!sourceItem || !targetItem) return;
                     if (sourceItem.id === targetItem.id) return;
 
-                    // For slips: handle cross-category moves
-                    if (sourceSlip && targetSlip && sourceSlip.category_id !== targetSlip.category_id) {
-                        updateSlipCategory(sourceSlip.id, targetSlip.category_id);
-                        setDraggedSlip(null);
-                        setDraggedTopic(null);
-                        setDragOverCategory(null);
-                        return;
-                    }
+                    // Determine if this involves the main category
+                    // Only use unified system if BOTH items are in main category OR involve topics
+                    const isMainCategoryOperation = 
+                        sourceTopic || targetTopic || // Any topic operation uses unified system
+                        (sourceSlip && targetSlip && 
+                         sourceSlip.category_id === mainCategory?.id && 
+                         targetSlip.category_id === mainCategory?.id); // Both slips in main category
 
-                    // Handle reordering within categories
-                    if (sourceSlip && targetSlip) {
-                        // Slip-to-slip reordering
-                        const isMainCategory = sourceSlip.category_id === mainCategory?.id;
-                        
-                        if (isMainCategory) {
-                            // In main category, use mixed reordering to handle slips and topics together
-                            reorderMixedItems(sourceSlip, targetSlip);
-                        } else {
-                            // For other categories, use slip-only reordering
-                            const categorySlips = slips.filter(slip => slip.category_id === sourceSlip.category_id);
-                            const sourceIndex = categorySlips.findIndex(slip => slip.id === sourceSlip.id);
-                            const destinationIndex = categorySlips.findIndex(slip => slip.id === targetSlip.id);
-
-                            if (sourceIndex === -1 || destinationIndex === -1) return;
-
-                            reorderOtherSlips(sourceIndex, destinationIndex);
+                    if (isMainCategoryOperation) {
+                        // Use unified order system for main category operations
+                        const targetPosition = combinedItems.findIndex(item => item.id === targetItem.id);
+                        if (targetPosition !== -1) {
+                            // For cross-category moves to main, use unified system directly
+                            if (sourceSlip && mainCategory && sourceSlip.category_id !== mainCategory.id) {
+                                // Move slip to main category and position it in one operation
+                                moveItemToPosition(sourceSlip, targetPosition, true);
+                            } else {
+                                // Same category reordering in main, or topic operations
+                                moveItemToPosition(sourceItem, targetPosition);
+                            }
                         }
-                    } else if ((sourceSlip && targetTopic) || (sourceTopic && targetSlip) || (sourceTopic && targetTopic)) {
-                        // Mixed reordering or topic-to-topic (only in main category)
-                        reorderMixedItems(sourceItem, targetItem);
+                    } else {
+                        // Handle non-main category operations with existing logic
+                        if (sourceSlip && targetSlip) {
+                            // For slips: handle cross-category moves
+                            if (sourceSlip.category_id !== targetSlip.category_id) {
+                                updateSlipCategory(sourceSlip.id, targetSlip.category_id);
+                            } else {
+                                // Same category reordering for non-main categories
+                                const categorySlips = slips.filter(slip => slip.category_id === sourceSlip.category_id);
+                                const sourceIndex = categorySlips.findIndex(slip => slip.id === sourceSlip.id);
+                                const destinationIndex = categorySlips.findIndex(slip => slip.id === targetSlip.id);
+
+                                if (sourceIndex !== -1 && destinationIndex !== -1) {
+                                    reorderOtherSlips(sourceIndex, destinationIndex);
+                                }
+                            }
+                        }
                     }
 
                     setDraggedSlip(null);
@@ -370,14 +322,12 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
                 }
             },
         });
-    }, [slips, topics, mainSlips, mainTopics, reorderMainSlips, reorderOtherSlips, categories, updateSlipCategory, mainCategory?.id, reorderMixedItems]);
+    }, [slips, topics, combinedItems, moveItemToPosition, updateSlipCategory, mainCategory?.id, reorderOtherSlips]);
 
     const handleItemCreated = () => {
         // Refresh the page to get updated slips and topics
         router.reload({ only: ['slips', 'topics'] });
     };
-
-
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -389,7 +339,7 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
                         {mainCategory && (
                             <MainCategoryPanel
                                 category={mainCategory}
-                                items={mainItems}
+                                items={combinedItems}
                                 draggedSlip={draggedSlip}
                                 draggedTopic={draggedTopic}
                                 dragOverCategory={dragOverCategory}

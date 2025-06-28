@@ -63,25 +63,30 @@ export function useSlipDragDrop({ slips, onReorder, categoryId }: UseSlipDragDro
             slipsToReorder = slips.filter(slip => slip.category_id === categoryId);
         }
 
+        // Create a copy and reorder
         const newSlips = [...slipsToReorder];
         const [removed] = newSlips.splice(startIndex, 1);
         newSlips.splice(endIndex, 0, removed);
 
+        // Update orders to be 0-based sequential
         const updatedSlips = newSlips.map((slip, index) => ({
             ...slip,
-            order: index + 1,
+            order: index, // 0-based ordering to match unified system
         }));
 
+        // Update the full slips array
         const allSlipsUpdated = slips.map(slip => {
             if (categoryId && slip.category_id !== categoryId) {
-                return slip;
+                return slip; // Keep slips from other categories unchanged
             }
             const updatedSlip = updatedSlips.find(updated => updated.id === slip.id);
             return updatedSlip || slip;
         });
 
+        // Update local state immediately for better UX
         onReorder?.(allSlipsUpdated);
 
+        // Send update to backend
         bulkReorderSlips(updatedSlips);
 
         return allSlipsUpdated;

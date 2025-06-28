@@ -44,7 +44,7 @@ class TopicController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:500',
-            'order' => 'nullable|integer|min:1',
+            'order' => 'nullable|integer|min:0',
         ]);
 
         DB::transaction(function () use ($request, $user) {
@@ -98,7 +98,7 @@ class TopicController extends Controller
         $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string|max:500',
-            'order' => 'nullable|integer|min:1',
+            'order' => 'nullable|integer|min:0',
         ]);
 
         $topic->update($request->only(['name', 'description', 'order']));
@@ -121,7 +121,7 @@ class TopicController extends Controller
         $request->validate([
             'topics' => 'required|array',
             'topics.*.id' => 'required|integer|exists:topics,id',
-            'topics.*.order' => 'required|integer|min:1',
+            'topics.*.order' => 'required|integer|min:0',
         ]);
 
         DB::transaction(function () use ($request, $user) {
@@ -146,7 +146,13 @@ class TopicController extends Controller
     {
         $this->authorize('delete', $topic);
         
-        $topic->delete();
+        DB::transaction(function () use ($topic) {
+            // Delete the topic
+            $topic->delete();
+            
+            // Topics are always in main category, so recalculate all orders using unified system
+            app(\App\Http\Controllers\ItemOrderController::class)->recalculateMainCategoryOrder(request());
+        });
 
         // Return appropriate response based on request type
         if (request()->wantsJson()) {

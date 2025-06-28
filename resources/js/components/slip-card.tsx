@@ -128,7 +128,7 @@ export function SlipCard({
                 {showOrderNumber && (
                     <div className="absolute top-2 left-2">
                         <span className="text-xs text-muted-foreground/60 font-mono bg-background/80 backdrop-blur-sm px-1.5 py-0.5 rounded">
-                            {slip.order}
+                            {slip.order + 1}
                         </span>
                     </div>
                 )}

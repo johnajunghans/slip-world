@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\SlipController;
 use App\Http\Controllers\TopicController;
+use App\Http\Controllers\ItemOrderController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -38,6 +39,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Topic routes
     Route::patch('topics/reorder', [TopicController::class, 'reorder'])->name('topics.reorder');
     Route::resource('topics', TopicController::class);
+
+    // Unified order management
+    Route::post('api/items/recalculate-order', [ItemOrderController::class, 'recalculateMainCategoryOrder']);
+    Route::post('api/items/insert-at-position', [ItemOrderController::class, 'insertAtPosition']);
 });
 
 require __DIR__.'/settings.php';
