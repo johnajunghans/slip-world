@@ -93,9 +93,19 @@ class SlipController extends Controller
     {
         $this->authorize('update', $slip);
 
+        $user = Auth::user();
+
         $request->validate([
             'content' => 'sometimes|required|string|max:1000',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => [
+                'nullable',
+                'exists:categories,id',
+                function ($attribute, $value, $fail) use ($user) {
+                    if ($value && !$user->categories()->where('id', $value)->exists()) {
+                        $fail('The selected category does not belong to you.');
+                    }
+                },
+            ],
             'order' => 'nullable|integer|min:1',
         ]);
 
@@ -147,6 +157,11 @@ class SlipController extends Controller
         
         $slip->delete();
 
-        return response()->json(null, 204);
+        // Return appropriate response based on request type
+        if (request()->wantsJson()) {
+            return response()->json(null, 204);
+        }
+
+        return redirect()->back()->with('success', 'Slip deleted successfully!');
     }
 }

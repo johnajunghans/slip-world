@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+This project is built with laravel and inertia. Whenever created or updating an api route, ensure that this common error does not occur: "All Inertia requests must receive a valid Inertia response, however a plain JSON response was received."

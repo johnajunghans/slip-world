@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -6,47 +6,80 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus } from 'lucide-react';
 import { useForm } from '@inertiajs/react';
-import { type Category } from '@/types';
+import { type Category, type Slip } from '@/types';
 
-interface CreateSlipModalProps {
+interface SlipModalProps {
     categories: Category[];
+    slip?: Slip | null;
+    isOpen: boolean;
+    onOpenChange: (open: boolean) => void;
+    trigger?: React.ReactNode;
 }
 
-export function CreateSlipModal({ categories }: CreateSlipModalProps) {
-    const [isOpen, setIsOpen] = useState(false);
-    
+export function SlipModal({ categories, slip, isOpen, onOpenChange, trigger }: SlipModalProps) {
     // Find the default UNASSIMILATED category
     const defaultCategory = categories.find(cat => cat.name === 'UNASSIMILATED');
     
-    const { data, setData, post, processing, errors, reset } = useForm({
-        content: '',
-        category_id: defaultCategory?.id || '',
+    const { data, setData, post, patch, processing, errors, reset } = useForm({
+        content: slip?.content || '',
+        category_id: slip?.category_id || defaultCategory?.id || '',
     });
 
+    // Update form data when slip prop changes
+    useEffect(() => {
+        if (slip) {
+            setData({
+                content: slip.content,
+                category_id: slip.category_id,
+            });
+        } else {
+            setData({
+                content: '',
+                category_id: defaultCategory?.id || '',
+            });
+        }
+    }, [slip, defaultCategory?.id]);
+
+    const isEditing = !!slip;
+
     const handleSave = () => {
-        post('/slips', {
-            onSuccess: () => {
-                reset('content');
-                setData('category_id', defaultCategory?.id || '');
-                setIsOpen(false);
-            },
-        });
+        if (isEditing) {
+            patch(`/slips/${slip.id}`, {
+                onSuccess: () => {
+                    onOpenChange(false);
+                },
+            });
+        } else {
+            post('/slips', {
+                onSuccess: () => {
+                    reset('content');
+                    setData('category_id', defaultCategory?.id || '');
+                    onOpenChange(false);
+                },
+            });
+        }
     };
 
     const handleCancel = () => {
-        reset('content');
-        setData('category_id', defaultCategory?.id || '');
-        setIsOpen(false);
+        if (isEditing) {
+            setData({
+                content: slip.content,
+                category_id: slip.category_id,
+            });
+        } else {
+            reset('content');
+            setData('category_id', defaultCategory?.id || '');
+        }
+        onOpenChange(false);
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger asChild>
-                <Button className="gap-2">
-                    Create Slip
-                    <Plus className="h-4 w-4" />
-                </Button>
-            </DialogTrigger>
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            {trigger && (
+                <DialogTrigger asChild>
+                    {trigger}
+                </DialogTrigger>
+            )}
             <DialogContent className="max-w-md p-0 gap-0">
                 <div className="p-6">
                     <div className="mb-4">
@@ -83,11 +116,30 @@ export function CreateSlipModal({ categories }: CreateSlipModalProps) {
                             Cancel
                         </Button>
                         <Button onClick={handleSave} disabled={!data.content.trim() || processing}>
-                            Save Slip
+                            {isEditing ? 'Update Slip' : 'Save Slip'}
                         </Button>
                     </div>
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+// Keep the old component name for backwards compatibility
+export function CreateSlipModal({ categories }: { categories: Category[] }) {
+    const [isOpen, setIsOpen] = useState(false);
+
+    return (
+        <SlipModal
+            categories={categories}
+            isOpen={isOpen}
+            onOpenChange={setIsOpen}
+            trigger={
+                <Button className="gap-2">
+                    Create Slip
+                    <Plus className="h-4 w-4" />
+                </Button>
+            }
+        />
     );
 } 
