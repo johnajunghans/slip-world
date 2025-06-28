@@ -171,7 +171,7 @@ export function SlipCard({
                 
                 {/* Content */}
                 <div className="flex-1 flex items-center justify-center pl-6">
-                    <p className="text-center text-base leading-relaxed">
+                    <p className="text-center text-base leading-relaxed break-words hyphens-auto max-w-full">
                         {slip.content}
                     </p>
                 </div>

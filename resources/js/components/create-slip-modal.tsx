@@ -105,7 +105,7 @@ export function SlipModal({ categories, slip, isOpen, onOpenChange, trigger }: S
                                 value={data.content}
                                 onChange={(e) => setData('content', e.target.value)}
                                 placeholder="Write your slip content here..."
-                                className="text-center text-base leading-relaxed border-none shadow-none resize-none bg-transparent focus-visible:ring-0 focus-visible:border-0 placeholder:text-muted-foreground/50 w-full overflow-hidden"
+                                className="text-center text-base leading-relaxed border-none shadow-none resize-none bg-transparent focus-visible:ring-0 focus-visible:border-0 placeholder:text-muted-foreground/50 w-full break-words hyphens-auto"
                                 autoFocus
                                 rows={6}
                             />
