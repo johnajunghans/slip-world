@@ -17,8 +17,8 @@ interface SlipModalProps {
 }
 
 export function SlipModal({ categories, slip, isOpen, onOpenChange, trigger }: SlipModalProps) {
-    // Find the default UNASSIMILATED category
-    const defaultCategory = categories.find(cat => cat.name === 'UNASSIMILATED');
+    // Find the default MAIN category
+    const defaultCategory = categories.find(cat => cat.name === 'MAIN');
     
     const { data, setData, post, patch, processing, errors, reset } = useForm({
         content: slip?.content || '',

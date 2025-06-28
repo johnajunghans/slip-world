@@ -31,6 +31,10 @@ class CreateDefaultCategories
 
         $defaultCategories = [
             [
+                'name' => 'MAIN',
+                'description' => 'Primary sequence of slips.',
+            ],
+            [
                 'name' => 'UNASSIMILATED',
                 'description' => 'Contains new ideas that interrupts what one does',
             ],

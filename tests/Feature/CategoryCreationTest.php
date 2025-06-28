@@ -12,11 +12,11 @@ test('default categories are created when user registers', function () {
     // Fire the Registered event
     event(new Registered($user));
 
-    // Assert that 5 categories were created
-    expect($user->categories()->count())->toBe(5);
+    // Assert that 6 categories were created
+    expect($user->categories()->count())->toBe(6);
 
     // Assert that all expected categories exist
-    $expectedCategories = ['UNASSIMILATED', 'PROGRAM', 'CRIT', 'TOUGH', 'JUNK'];
+    $expectedCategories = ['MAIN', 'UNASSIMILATED', 'PROGRAM', 'CRIT', 'TOUGH', 'JUNK'];
     $createdCategoryNames = $user->categories()->pluck('name')->toArray();
 
     foreach ($expectedCategories as $expectedCategory) {
@@ -30,6 +30,7 @@ test('categories have correct descriptions', function () {
 
     $categories = $user->categories()->get()->keyBy('name');
 
+    expect($categories['MAIN']->description)->toBe('Primary sequence of slips.');
     expect($categories['UNASSIMILATED']->description)->toBe('Contains new ideas that interrupts what one does');
     expect($categories['PROGRAM']->description)->toBe('Instructions for what to do with the rest of the slips');
     expect($categories['CRIT']->description)->toBe('For days when a foul mood strikes and everything in the current system seems bad');
@@ -44,8 +45,8 @@ test('duplicate categories are not created', function () {
     event(new Registered($user));
     event(new Registered($user));
 
-    // Should still only have 5 categories
-    expect($user->categories()->count())->toBe(5);
+    // Should still only have 6 categories
+    expect($user->categories()->count())->toBe(6);
 });
 
 test('user category and slip relationships work correctly', function () {

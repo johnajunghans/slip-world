@@ -18,11 +18,11 @@ test('new users get default categories when registering through web', function (
     // Get the created user
     $user = User::where('email', 'test@example.com')->first();
     
-    // Assert that 5 categories were created
-    expect($user->categories()->count())->toBe(5);
+    // Assert that 6 categories were created
+    expect($user->categories()->count())->toBe(6);
 
     // Assert that all expected categories exist with correct names
-    $expectedCategories = ['UNASSIMILATED', 'PROGRAM', 'CRIT', 'TOUGH', 'JUNK'];
+    $expectedCategories = ['MAIN', 'UNASSIMILATED', 'PROGRAM', 'CRIT', 'TOUGH', 'JUNK'];
     $createdCategoryNames = $user->categories()->pluck('name')->toArray();
 
     foreach ($expectedCategories as $expectedCategory) {
