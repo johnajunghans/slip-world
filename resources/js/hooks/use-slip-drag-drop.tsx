@@ -4,9 +4,10 @@ import type { Slip } from '@/types';
 interface UseSlipDragDropProps {
     slips: Slip[];
     onReorder?: (newSlips: Slip[]) => void;
+    categoryId?: number;
 }
 
-export function useSlipDragDrop({ slips, onReorder }: UseSlipDragDropProps) {
+export function useSlipDragDrop({ slips, onReorder, categoryId }: UseSlipDragDropProps) {
     const updateSlipOrder = useCallback(async (slipId: number, newOrder: number) => {
         try {
             // Use fetch for JSON API calls to avoid Inertia response issues
@@ -57,25 +58,34 @@ export function useSlipDragDrop({ slips, onReorder }: UseSlipDragDropProps) {
     }, []);
 
     const reorderSlips = useCallback((startIndex: number, endIndex: number) => {
-        const newSlips = [...slips];
+        let slipsToReorder = slips;
+        if (categoryId) {
+            slipsToReorder = slips.filter(slip => slip.category_id === categoryId);
+        }
+
+        const newSlips = [...slipsToReorder];
         const [removed] = newSlips.splice(startIndex, 1);
         newSlips.splice(endIndex, 0, removed);
 
-        // Update the order values for all affected slips
         const updatedSlips = newSlips.map((slip, index) => ({
             ...slip,
             order: index + 1,
         }));
 
-        // Call the optional callback for optimistic updates
-        onReorder?.(updatedSlips);
+        const allSlipsUpdated = slips.map(slip => {
+            if (categoryId && slip.category_id !== categoryId) {
+                return slip;
+            }
+            const updatedSlip = updatedSlips.find(updated => updated.id === slip.id);
+            return updatedSlip || slip;
+        });
 
-        // Always use bulk reorder to ensure all affected slips get proper order numbers
-        // The previous optimization for adjacent swaps was causing duplicate order numbers
+        onReorder?.(allSlipsUpdated);
+
         bulkReorderSlips(updatedSlips);
 
-        return updatedSlips;
-    }, [slips, onReorder, bulkReorderSlips]);
+        return allSlipsUpdated;
+    }, [slips, onReorder, bulkReorderSlips, categoryId]);
 
     return {
         reorderSlips,

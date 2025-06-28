@@ -15,6 +15,8 @@ interface SlipCardProps {
     slip: Slip;
     className?: string;
     isDragging?: boolean;
+    showOrderNumber?: boolean;
+    draggedSlipCategoryId?: number | null;
     onDragStart?: (slip: Slip) => void;
     onDragEnd?: () => void;
     onEdit?: (slip: Slip) => void;
@@ -25,6 +27,8 @@ export function SlipCard({
     slip, 
     className, 
     isDragging = false,
+    showOrderNumber = false,
+    draggedSlipCategoryId = null,
     onDragStart,
     onDragEnd,
     onEdit,
@@ -67,19 +71,26 @@ export function SlipCard({
                     onDragEnd?.();
                 },
             }),
-            dropTargetForElements({
-                element,
-                getData: () => ({ slip }),
-                onDragEnter: () => setIsDraggedOver(true),
-                onDragLeave: () => setIsDraggedOver(false),
-                onDrop: () => setIsDraggedOver(false),
-            }),
         ];
+
+        const shouldBeDropTarget = draggedSlipCategoryId === null || draggedSlipCategoryId === slip.category_id;
+        
+        if (shouldBeDropTarget) {
+            cleanup.push(
+                dropTargetForElements({
+                    element,
+                    getData: () => ({ slip }),
+                    onDragEnter: () => setIsDraggedOver(true),
+                    onDragLeave: () => setIsDraggedOver(false),
+                    onDrop: () => setIsDraggedOver(false),
+                })
+            );
+        }
 
         return () => {
             cleanup.forEach((fn) => fn());
         };
-    }, [slip, onDragStart, onDragEnd]);
+    }, [slip, onDragStart, onDragEnd, draggedSlipCategoryId]);
 
     const handleEdit = () => {
         onEdit?.(slip);
@@ -113,12 +124,14 @@ export function SlipCard({
             }}
         >
             <CardContent className="flex items-center min-h-36 p-6">
-                {/* Order Number */}
-                <div className="absolute top-2 left-2">
-                    <span className="text-xs text-muted-foreground/60 font-mono bg-background/80 backdrop-blur-sm px-1.5 py-0.5 rounded">
-                        {slip.order}
-                    </span>
-                </div>
+                {/* Order Number - only show if showOrderNumber is true */}
+                {showOrderNumber && (
+                    <div className="absolute top-2 left-2">
+                        <span className="text-xs text-muted-foreground/60 font-mono bg-background/80 backdrop-blur-sm px-1.5 py-0.5 rounded">
+                            {slip.order}
+                        </span>
+                    </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className={`absolute top-2 right-2 flex gap-1 transition-all duration-200 ${

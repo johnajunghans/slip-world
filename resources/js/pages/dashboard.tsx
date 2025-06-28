@@ -38,6 +38,7 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
     const [slips, setSlips] = useState(initialSlips);
     const [topics, setTopics] = useState(initialTopics);
     const [draggedSlip, setDraggedSlip] = useState<Slip | null>(null);
+    const [draggedTopic, setDraggedTopic] = useState<Topic | null>(null);
     const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
     const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -45,7 +46,18 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
     const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
     const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
     
-    const { reorderSlips } = useSlipDragDrop({
+    // Get main category for drag drop hook
+    const mainCategory = categories.find(cat => cat.name === MAIN_CATEGORY);
+    
+    // Use drag drop hook for main category (where order matters)
+    const { reorderSlips: reorderMainSlips } = useSlipDragDrop({
+        slips,
+        onReorder: setSlips,
+        categoryId: mainCategory?.id,
+    });
+
+    // Use drag drop hook for other categories (order doesn't matter, but still need for cross-category moves)
+    const { reorderSlips: reorderOtherSlips } = useSlipDragDrop({
         slips,
         onReorder: setSlips,
     });
@@ -94,75 +106,9 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
         }
     };
 
-    useEffect(() => {
-        return monitorForElements({
-            onDrop({ source, location }) {
-                if (!location.current.dropTargets.length) return;
 
-                const sourceSlip = source.data.slip as Slip;
-                const sourceData = source.data;
 
-                // Look through all drop targets to find the most specific one
-                // Category containers will be deeper in the hierarchy than slip cards
-                let categoryTarget = null;
-                let slipTarget = null;
 
-                for (const target of location.current.dropTargets) {
-                    if (target.data.categoryId) {
-                        categoryTarget = target;
-                    } else if (target.data.slip) {
-                        slipTarget = target;
-                    }
-                }
-
-                // Prefer category target if available (direct category drop)
-                if (categoryTarget) {
-                    const targetCategoryId = categoryTarget.data.categoryId as number;
-                    
-                    // Only allow topics in MAIN category (though topics aren't currently shown)
-                    if (sourceData.topic && targetCategoryId !== categories.find(cat => cat.name === MAIN_CATEGORY)?.id) {
-                        console.log('Topics can only be placed in MAIN category');
-                        setDraggedSlip(null);
-                        setDragOverCategory(null);
-                        return;
-                    }
-
-                    // Update slip category if it's different
-                    if (sourceSlip.category_id !== targetCategoryId) {
-                        updateSlipCategory(sourceSlip.id, targetCategoryId);
-                    }
-                    
-                    setDraggedSlip(null);
-                    setDragOverCategory(null);
-                    return;
-                }
-
-                // Handle slip-to-slip drops
-                if (slipTarget) {
-                    const destinationSlip = slipTarget.data.slip as Slip;
-                    if (sourceSlip.id === destinationSlip.id) return;
-
-                    // If slips are in different categories, move to target category
-                    if (sourceSlip.category_id !== destinationSlip.category_id) {
-                        updateSlipCategory(sourceSlip.id, destinationSlip.category_id);
-                        setDraggedSlip(null);
-                        setDragOverCategory(null);
-                        return;
-                    }
-
-                    // Handle reordering within the same category
-                    const sourceIndex = slips.findIndex(slip => slip.id === sourceSlip.id);
-                    const destinationIndex = slips.findIndex(slip => slip.id === destinationSlip.id);
-
-                    if (sourceIndex === -1 || destinationIndex === -1) return;
-
-                    reorderSlips(sourceIndex, destinationIndex);
-                    setDraggedSlip(null);
-                    setDragOverCategory(null);
-                }
-            },
-        });
-    }, [slips, reorderSlips, categories, updateSlipCategory]);
 
     // Update local state when props change (e.g., after server updates)
     useEffect(() => {
@@ -177,8 +123,13 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
         setDraggedSlip(slip);
     };
 
+    const handleTopicDragStart = (topic: Topic) => {
+        setDraggedTopic(topic);
+    };
+
     const handleDragEnd = () => {
         setDraggedSlip(null);
+        setDraggedTopic(null);
         setDragOverCategory(null);
     };
 
@@ -259,24 +210,195 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
     // Get MAIN category slips and topics
     const mainSlips = getSlipsForCategory(MAIN_CATEGORY);
     const mainTopics = topics.sort((a, b) => a.order - b.order);
-    const mainCategory = categories.find(cat => cat.name === MAIN_CATEGORY);
 
     // Combine slips and topics for main category, sorted by order
     const mainItems = [...mainSlips, ...mainTopics].sort((a, b) => a.order - b.order);
+
+    // Helper function to reorder mixed items (slips and topics) in main category
+    const reorderMixedItems = async (sourceItem: Slip | Topic, targetItem: Slip | Topic) => {
+        const allMainItems = [...mainSlips, ...mainTopics].sort((a, b) => a.order - b.order);
+        const sourceIndex = allMainItems.findIndex(item => item.id === sourceItem.id);
+        const targetIndex = allMainItems.findIndex(item => item.id === targetItem.id);
+        
+        if (sourceIndex === -1 || targetIndex === -1) return;
+
+        // Reorder the items array
+        const reorderedItems = [...allMainItems];
+        const [removed] = reorderedItems.splice(sourceIndex, 1);
+        reorderedItems.splice(targetIndex, 0, removed);
+
+        // Update order values
+        const updatedItems = reorderedItems.map((item, index) => ({
+            ...item,
+            order: index + 1,
+        }));
+
+        // Separate slips and topics for API calls
+        const updatedSlips = updatedItems.filter(item => 'content' in item) as Slip[];
+        const updatedTopics = updatedItems.filter(item => 'name' in item) as Topic[];
+
+        // Update local state optimistically
+        setSlips(prevSlips => 
+            prevSlips.map(slip => {
+                const updated = updatedSlips.find(s => s.id === slip.id);
+                return updated || slip;
+            })
+        );
+        setTopics(updatedTopics);
+
+        // Make API calls to update order
+        try {
+            if (updatedSlips.length > 0) {
+                await fetch('/slips/reorder', {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    },
+                    body: JSON.stringify({
+                        slips: updatedSlips.map(slip => ({
+                            id: slip.id,
+                            order: slip.order,
+                        })),
+                    }),
+                });
+            }
+
+            if (updatedTopics.length > 0) {
+                await fetch('/topics/reorder', {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    },
+                    body: JSON.stringify({
+                        topics: updatedTopics.map(topic => ({
+                            id: topic.id,
+                            order: topic.order,
+                        })),
+                    }),
+                });
+            }
+        } catch (error) {
+            console.error('Failed to reorder items:', error);
+        }
+    };
+
+    useEffect(() => {
+        return monitorForElements({
+            onDrop({ source, location }) {
+                if (!location.current.dropTargets.length) return;
+
+                const sourceSlip = source.data.slip as Slip;
+                const sourceTopic = source.data.topic as Topic;
+                const sourceData = source.data;
+
+                // Look through all drop targets to find the most specific one
+                let categoryTarget = null;
+                let slipTarget = null;
+                let topicTarget = null;
+
+                for (const target of location.current.dropTargets) {
+                    if (target.data.categoryId) {
+                        categoryTarget = target;
+                    } else if (target.data.slip) {
+                        slipTarget = target;
+                    } else if (target.data.topic) {
+                        topicTarget = target;
+                    }
+                }
+
+                // Prefer category target if available (direct category drop)
+                if (categoryTarget) {
+                    const targetCategoryId = categoryTarget.data.categoryId as number;
+                    
+                    // Topics can only be placed in MAIN category
+                    if (sourceTopic && targetCategoryId !== mainCategory?.id) {
+                        console.log('Topics can only be placed in MAIN category');
+                        setDraggedSlip(null);
+                        setDraggedTopic(null);
+                        setDragOverCategory(null);
+                        return;
+                    }
+
+                    // Update slip category if it's different (only for slips)
+                    if (sourceSlip && sourceSlip.category_id !== targetCategoryId) {
+                        updateSlipCategory(sourceSlip.id, targetCategoryId);
+                    }
+                    
+                    setDraggedSlip(null);
+                    setDraggedTopic(null);
+                    setDragOverCategory(null);
+                    return;
+                }
+
+                // Handle item-to-item drops (slip-to-slip, topic-to-topic, slip-to-topic, topic-to-slip)
+                if (slipTarget || topicTarget) {
+                    const targetSlip = slipTarget?.data.slip as Slip;
+                    const targetTopic = topicTarget?.data.topic as Topic;
+                    const targetItem = targetSlip || targetTopic;
+                    const sourceItem = sourceSlip || sourceTopic;
+
+                    if (!sourceItem || !targetItem) return;
+                    if (sourceItem.id === targetItem.id) return;
+
+                    // For slips: handle cross-category moves
+                    if (sourceSlip && targetSlip && sourceSlip.category_id !== targetSlip.category_id) {
+                        updateSlipCategory(sourceSlip.id, targetSlip.category_id);
+                        setDraggedSlip(null);
+                        setDraggedTopic(null);
+                        setDragOverCategory(null);
+                        return;
+                    }
+
+                    // Handle reordering within categories
+                    if (sourceSlip && targetSlip) {
+                        // Slip-to-slip reordering
+                        const isMainCategory = sourceSlip.category_id === mainCategory?.id;
+                        
+                        if (isMainCategory) {
+                            // In main category, use mixed reordering to handle slips and topics together
+                            reorderMixedItems(sourceSlip, targetSlip);
+                        } else {
+                            // For other categories, use slip-only reordering
+                            const categorySlips = slips.filter(slip => slip.category_id === sourceSlip.category_id);
+                            const sourceIndex = categorySlips.findIndex(slip => slip.id === sourceSlip.id);
+                            const destinationIndex = categorySlips.findIndex(slip => slip.id === targetSlip.id);
+
+                            if (sourceIndex === -1 || destinationIndex === -1) return;
+
+                            reorderOtherSlips(sourceIndex, destinationIndex);
+                        }
+                    } else if ((sourceSlip && targetTopic) || (sourceTopic && targetSlip) || (sourceTopic && targetTopic)) {
+                        // Mixed reordering or topic-to-topic (only in main category)
+                        reorderMixedItems(sourceItem, targetItem);
+                    }
+
+                    setDraggedSlip(null);
+                    setDraggedTopic(null);
+                    setDragOverCategory(null);
+                }
+            },
+        });
+    }, [slips, topics, mainSlips, mainTopics, reorderMainSlips, reorderOtherSlips, categories, updateSlipCategory, mainCategory?.id, reorderMixedItems]);
 
     const handleItemCreated = () => {
         // Refresh the page to get updated slips and topics
         router.reload({ only: ['slips', 'topics'] });
     };
 
-    const renderSlipsList = (slipsToRender: Slip[], emptyMessage: string) => {
+    const renderSlipsList = (slipsToRender: Slip[], emptyMessage: string, categoryName?: string) => {
         if (slipsToRender.length > 0) {
             return slipsToRender.map((slip: Slip) => (
                 <SlipCard 
                     key={slip.id} 
                     slip={slip}
                     className="w-full"
+                    showOrderNumber={categoryName === MAIN_CATEGORY}
                     isDragging={draggedSlip?.id === slip.id}
+                    draggedSlipCategoryId={draggedSlip?.category_id || null}
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                     onEdit={handleEdit}
@@ -321,7 +443,9 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
                             key={`slip-${slip.id}`} 
                             slip={slip}
                             className="w-full"
+                            showOrderNumber={true} // Always show order numbers in main category
                             isDragging={draggedSlip?.id === slip.id}
+                            draggedSlipCategoryId={draggedSlip?.category_id || null}
                             onDragStart={handleDragStart}
                             onDragEnd={handleDragEnd}
                             onEdit={handleEdit}
@@ -335,6 +459,11 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
                             key={`topic-${topic.id}`} 
                             topic={topic}
                             className="w-full"
+                            isDragging={draggedTopic?.id === topic.id}
+                            draggedSlipCategoryId={draggedSlip?.category_id || null}
+                            draggedTopicId={draggedTopic?.id || null}
+                            onDragStart={handleTopicDragStart}
+                            onDragEnd={handleDragEnd}
                             onEdit={handleTopicEdit}
                             onDelete={handleTopicDelete}
                         />
@@ -400,6 +529,18 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
             const element = ref.current;
             if (!element || !category) return;
 
+            // For topics, they can only be in MAIN category, so other categories should not be droppable
+            if (draggedTopic && category.name !== MAIN_CATEGORY) return;
+            
+            // Only make category droppable if:
+            // 1. No item is being dragged, OR
+            // 2. The dragged slip is from a different category
+            const shouldBeDropTarget = 
+                (!draggedSlip && !draggedTopic) || // No drag in progress
+                (draggedSlip && draggedSlip.category_id !== category.id); // Slip from different category
+            
+            if (!shouldBeDropTarget) return;
+
             const cleanup = dropTargetForElements({
                 element,
                 getData: () => ({ categoryId: category.id, categoryName }),
@@ -409,7 +550,7 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
             });
 
             return cleanup;
-        }, [category, categoryName]);
+        }, [category, categoryName, draggedSlip, draggedTopic]);
 
         if (!category) return <div className={className}>{children}</div>;
 
@@ -469,7 +610,8 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
                             )}
                             {renderSlipsList(
                                 categorySlips,
-                                `No slips in ${categoryName} yet.`
+                                `No slips in ${categoryName} yet.`,
+                                categoryName
                             )}
                         </div>
                     </CollapsibleContent>

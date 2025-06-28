@@ -15,6 +15,8 @@ interface TopicCardProps {
     topic: Topic;
     className?: string;
     isDragging?: boolean;
+    draggedSlipCategoryId?: number | null;
+    draggedTopicId?: number | null;
     onDragStart?: (topic: Topic) => void;
     onDragEnd?: () => void;
     onEdit?: (topic: Topic) => void;
@@ -25,6 +27,8 @@ export function TopicCard({
     topic, 
     className, 
     isDragging = false,
+    draggedSlipCategoryId = null,
+    draggedTopicId = null,
     onDragStart,
     onDragEnd,
     onEdit,
@@ -67,19 +71,29 @@ export function TopicCard({
                     onDragEnd?.();
                 },
             }),
-            dropTargetForElements({
-                element,
-                getData: () => ({ topic }),
-                onDragEnter: () => setIsDraggedOver(true),
-                onDragLeave: () => setIsDraggedOver(false),
-                onDrop: () => setIsDraggedOver(false),
-            }),
         ];
+
+        const shouldBeDropTarget = 
+            (draggedSlipCategoryId === null && draggedTopicId === null) ||
+            (draggedSlipCategoryId !== null) ||
+            (draggedTopicId !== null && draggedTopicId !== topic.id);
+        
+        if (shouldBeDropTarget) {
+            cleanup.push(
+                dropTargetForElements({
+                    element,
+                    getData: () => ({ topic }),
+                    onDragEnter: () => setIsDraggedOver(true),
+                    onDragLeave: () => setIsDraggedOver(false),
+                    onDrop: () => setIsDraggedOver(false),
+                })
+            );
+        }
 
         return () => {
             cleanup.forEach((fn) => fn());
         };
-    }, [topic, onDragStart, onDragEnd]);
+    }, [topic, onDragStart, onDragEnd, draggedSlipCategoryId, draggedTopicId]);
 
     const handleEdit = () => {
         onEdit?.(topic);
