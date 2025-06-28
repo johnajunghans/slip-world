@@ -70,17 +70,12 @@ export function useSlipDragDrop({ slips, onReorder }: UseSlipDragDropProps) {
         // Call the optional callback for optimistic updates
         onReorder?.(updatedSlips);
 
-        // Use single update for simple moves, bulk update for complex reordering
-        if (Math.abs(startIndex - endIndex) === 1) {
-            // Simple adjacent swap - just update the moved slip
-            updateSlipOrder(removed.id, endIndex + 1);
-        } else {
-            // Complex move - use bulk reorder for efficiency
-            bulkReorderSlips(updatedSlips);
-        }
+        // Always use bulk reorder to ensure all affected slips get proper order numbers
+        // The previous optimization for adjacent swaps was causing duplicate order numbers
+        bulkReorderSlips(updatedSlips);
 
         return updatedSlips;
-    }, [slips, onReorder, updateSlipOrder, bulkReorderSlips]);
+    }, [slips, onReorder, bulkReorderSlips]);
 
     return {
         reorderSlips,

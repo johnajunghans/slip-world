@@ -73,7 +73,7 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
                     <div className="space-y-4">
                         <h2 className="text-lg font-semibold mb-4">Your Slips</h2>
                         {slips.length > 0 ? (
-                            slips.map((slip) => (
+                            slips.sort((a, b) => a.order - b.order).map((slip: Slip) => (
                                 <SlipCard 
                                     key={slip.id} 
                                     slip={slip}
