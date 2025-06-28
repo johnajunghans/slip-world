@@ -135,9 +135,9 @@ export function CreateSlipModal({ categories }: { categories: Category[] }) {
             isOpen={isOpen}
             onOpenChange={setIsOpen}
             trigger={
-                <Button className="gap-2">
-                    Create Slip
+                <Button variant="outline" className="gap-2">
                     <Plus className="h-4 w-4" />
+                    Create Slip
                 </Button>
             }
         />

@@ -5,6 +5,7 @@ import AppLayout from '@/layouts/app-layout';
 import { useSlipDragDrop } from '@/hooks/use-slip-drag-drop';
 import { type BreadcrumbItem, type Slip, type Category } from '@/types';
 import { Head, router } from '@inertiajs/react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
     monitorForElements,
 } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
@@ -15,6 +16,9 @@ const breadcrumbs: BreadcrumbItem[] = [
         href: '/dashboard',
     },
 ];
+
+// Define the default category names
+const DEFAULT_CATEGORIES = ['UNASSIMILATED', 'PROGRAM', 'CRIT', 'TOUGH', 'JUNK'];
 
 interface DashboardProps {
     slips: Slip[];
@@ -91,38 +95,109 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
         });
     };
 
+    // Filter slips by category type
+    const defaultCategoryIds = categories
+        .filter(cat => DEFAULT_CATEGORIES.includes(cat.name))
+        .map(cat => cat.id);
+    
+    const nonDefaultSlips = slips.filter(slip => 
+        !defaultCategoryIds.includes(slip.category_id)
+    ).sort((a, b) => a.order - b.order);
+
+    // Get slips for each default category
+    const getSlipsForCategory = (categoryName: string) => {
+        const category = categories.find(cat => cat.name === categoryName);
+        if (!category) return [];
+        
+        return slips
+            .filter(slip => slip.category_id === category.id)
+            .sort((a, b) => a.order - b.order);
+    };
+
+    // Get default categories in the correct order
+    const defaultCategories = DEFAULT_CATEGORIES.map(name => 
+        categories.find(cat => cat.name === name)
+    ).filter(Boolean) as Category[];
+
+    const renderSlipsList = (slipsToRender: Slip[], emptyMessage: string) => {
+        if (slipsToRender.length > 0) {
+            return slipsToRender.map((slip: Slip) => (
+                <SlipCard 
+                    key={slip.id} 
+                    slip={slip}
+                    className="w-full"
+                    isDragging={draggedSlip?.id === slip.id}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                />
+            ));
+        }
+
+        return (
+            <div className="flex items-center justify-center min-h-[200px] border border-dashed border-sidebar-border/70 rounded-xl">
+                <p className="text-muted-foreground text-sm">{emptyMessage}</p>
+            </div>
+        );
+    };
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Dashboard" />
             <div className="flex h-full flex-1 gap-6 p-4 overflow-hidden">
-                {/* Left half - Vertical carousel of slip cards */}
-                <div className="flex-1 overflow-y-auto max-h-[calc(100vh-116px)] px-2">
+                {/* Left half - Non-default category slips */}
+                <div className="flex-1 overflow-y-auto max-h-[calc(100vh-116px)] p-2">
                     <div className="space-y-4">
-                        <h2 className="text-lg font-semibold mb-4">Your Slips</h2>
-                        {slips.length > 0 ? (
-                            slips.sort((a, b) => a.order - b.order).map((slip: Slip) => (
-                                <SlipCard 
-                                    key={slip.id} 
-                                    slip={slip}
-                                    className="w-full"
-                                    isDragging={draggedSlip?.id === slip.id}
-                                    onDragStart={handleDragStart}
-                                    onDragEnd={handleDragEnd}
-                                    onEdit={handleEdit}
-                                    onDelete={handleDelete}
-                                />
-                            ))
-                        ) : (
-                            <div className="flex items-center justify-center min-h-[400px] border border-dashed border-sidebar-border/70 rounded-xl">
-                                <p className="text-muted-foreground">No slips yet. Create your first slip to get started!</p>
-                            </div>
+                        {/* <h2 className="text-lg font-semibold mb-4">Custom Categories</h2> */}
+                        {renderSlipsList(
+                            nonDefaultSlips,
+                            "No slips in custom categories. All slips are in default categories or create a custom category!"
                         )}
                     </div>
                 </div>
                 
-                {/* Right half - Available for future content */}
-                <div className="flex-1 flex items-center justify-center border border-dashed border-sidebar-border/70 rounded-xl">
-                    <p className="text-muted-foreground">Right panel content goes here</p>
+                {/* Right half - Default category tabs */}
+                <div className="flex-1 flex flex-col overflow-y-auto max-h-[calc(100vh-116px)] p-2">
+                    {/* <h2 className="text-lg font-semibold mb-4">Default Categories</h2> */}
+                    <Tabs defaultValue={DEFAULT_CATEGORIES[0]} className="flex-1 flex flex-col">
+                        <TabsList className="grid w-full grid-cols-5">
+                            {DEFAULT_CATEGORIES.map((categoryName) => (
+                                <TabsTrigger 
+                                    key={categoryName} 
+                                    value={categoryName}
+                                    className="text-xs"
+                                >
+                                    {categoryName}
+                                </TabsTrigger>
+                            ))}
+                        </TabsList>
+                        
+                        {DEFAULT_CATEGORIES.map((categoryName) => {
+                            const categorySlips = getSlipsForCategory(categoryName);
+                            const category = categories.find(cat => cat.name === categoryName);
+                            
+                            return (
+                                <TabsContent 
+                                    key={categoryName} 
+                                    value={categoryName}
+                                    className="flex-1 overflow-y-auto mt-4"
+                                >
+                                    <div className="space-y-4">
+                                        {category?.description && (
+                                            <p className="text-sm text-muted-foreground italic border-l-2 border-sidebar-border pl-3">
+                                                {category.description}
+                                            </p>
+                                        )}
+                                        {renderSlipsList(
+                                            categorySlips,
+                                            `No slips in ${categoryName} yet.`
+                                        )}
+                                    </div>
+                                </TabsContent>
+                            );
+                        })}
+                    </Tabs>
                 </div>
             </div>
 
