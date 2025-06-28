@@ -7,9 +7,12 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class SlipController extends Controller
 {
+    use AuthorizesRequests;
     /**
      * Display a listing of the resource.
      */
@@ -91,7 +94,7 @@ class SlipController extends Controller
         $this->authorize('update', $slip);
 
         $request->validate([
-            'content' => 'required|string|max:1000',
+            'content' => 'sometimes|required|string|max:1000',
             'category_id' => 'nullable|exists:categories,id',
             'order' => 'nullable|integer|min:1',
         ]);
@@ -99,7 +102,40 @@ class SlipController extends Controller
         $slip->update($request->only(['content', 'category_id', 'order']));
         $slip->load('category');
 
-        return response()->json($slip);
+        // Return appropriate response based on request type
+        if ($request->wantsJson()) {
+            return response()->json($slip);
+        }
+
+        return redirect()->back()->with('success', 'Slip updated successfully!');
+    }
+
+    /**
+     * Reorder slips in bulk.
+     */
+    public function reorder(Request $request)
+    {
+        $user = Auth::user();
+        
+        $request->validate([
+            'slips' => 'required|array',
+            'slips.*.id' => 'required|integer|exists:slips,id',
+            'slips.*.order' => 'required|integer|min:1',
+        ]);
+
+        DB::transaction(function () use ($request, $user) {
+            foreach ($request->slips as $slipData) {
+                $slip = $user->slips()->findOrFail($slipData['id']);
+                $slip->update(['order' => $slipData['order']]);
+            }
+        });
+
+        // Return appropriate response based on request type
+        if ($request->wantsJson()) {
+            return response()->json(['message' => 'Slips reordered successfully']);
+        }
+
+        return redirect()->back()->with('success', 'Slips reordered successfully!');
     }
 
     /**

@@ -1,7 +1,12 @@
+import { useState, useEffect } from 'react';
 import { SlipCard } from '@/components/slip-card';
 import AppLayout from '@/layouts/app-layout';
+import { useSlipDragDrop } from '@/hooks/use-slip-drag-drop';
 import { type BreadcrumbItem, type Slip, type Category } from '@/types';
-import { Head, usePage } from '@inertiajs/react';
+import { Head } from '@inertiajs/react';
+import {
+    monitorForElements,
+} from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -10,14 +15,55 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-
-
 interface DashboardProps {
     slips: Slip[];
     categories: Category[];
 }
 
-export default function Dashboard({ slips, categories }: DashboardProps) {
+export default function Dashboard({ slips: initialSlips, categories }: DashboardProps) {
+    const [slips, setSlips] = useState(initialSlips);
+    const [draggedSlip, setDraggedSlip] = useState<Slip | null>(null);
+    
+    const { reorderSlips } = useSlipDragDrop({
+        slips,
+        onReorder: setSlips,
+    });
+
+    useEffect(() => {
+        return monitorForElements({
+            onDrop({ source, location }) {
+                const destination = location.current.dropTargets[0];
+                if (!destination) return;
+
+                const sourceSlip = source.data.slip as Slip;
+                const destinationSlip = destination.data.slip as Slip;
+
+                if (sourceSlip.id === destinationSlip.id) return;
+
+                const sourceIndex = slips.findIndex(slip => slip.id === sourceSlip.id);
+                const destinationIndex = slips.findIndex(slip => slip.id === destinationSlip.id);
+
+                if (sourceIndex === -1 || destinationIndex === -1) return;
+
+                reorderSlips(sourceIndex, destinationIndex);
+                setDraggedSlip(null);
+            },
+        });
+    }, [slips, reorderSlips]);
+
+    // Update local state when props change (e.g., after server updates)
+    useEffect(() => {
+        setSlips(initialSlips);
+    }, [initialSlips]);
+
+    const handleDragStart = (slip: Slip) => {
+        setDraggedSlip(slip);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedSlip(null);
+    };
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Dashboard" />
@@ -32,6 +78,9 @@ export default function Dashboard({ slips, categories }: DashboardProps) {
                                     key={slip.id} 
                                     slip={slip}
                                     className="w-full"
+                                    isDragging={draggedSlip?.id === slip.id}
+                                    onDragStart={handleDragStart}
+                                    onDragEnd={handleDragEnd}
                                 />
                             ))
                         ) : (

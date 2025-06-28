@@ -27,6 +27,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->name('dashboard');
 
     // Slip routes
+    Route::patch('slips/reorder', [SlipController::class, 'reorder'])->name('slips.reorder');
     Route::resource('slips', SlipController::class);
 });
 
