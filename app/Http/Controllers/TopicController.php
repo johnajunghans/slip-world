@@ -44,16 +44,28 @@ class TopicController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:500',
+            'order' => 'nullable|integer|min:1',
         ]);
 
-        // Get the next order number
-        $nextOrder = $user->topics()->max('order') + 1;
+        DB::transaction(function () use ($request, $user) {
+            $insertOrder = $request->order;
+            
+            if ($insertOrder) {
+                // Insert at specific position - increment order of existing topics
+                $user->topics()
+                    ->where('order', '>=', $insertOrder)
+                    ->increment('order');
+            } else {
+                // Append to end - get the next order number
+                $insertOrder = $user->topics()->max('order') + 1;
+            }
 
-        $topic = $user->topics()->create([
-            'name' => $request->name,
-            'description' => $request->description,
-            'order' => $nextOrder,
-        ]);
+            $user->topics()->create([
+                'name' => $request->name,
+                'description' => $request->description,
+                'order' => $insertOrder,
+            ]);
+        });
 
         return redirect()->back()->with('success', 'Topic created successfully!');
     }

@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { SlipCard } from '@/components/slip-card';
+import { TopicCard } from '@/components/topic-card';
 import { SlipModal } from '@/components/create-slip-modal';
+import { TopicModal } from '@/components/topic-modal';
+import { InsertItemLine } from '@/components/insert-item-line';
 import AppLayout from '@/layouts/app-layout';
 import { useSlipDragDrop } from '@/hooks/use-slip-drag-drop';
-import { type BreadcrumbItem, type Slip, type Category } from '@/types';
+import { type BreadcrumbItem, type Slip, type Category, type Topic } from '@/types';
 import { Head, router } from '@inertiajs/react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import {
     monitorForElements,
     dropTargetForElements,
@@ -28,13 +31,17 @@ const ALL_DEFAULT_CATEGORIES = [MAIN_CATEGORY, ...OTHER_DEFAULT_CATEGORIES];
 interface DashboardProps {
     slips: Slip[];
     categories: Category[];
+    topics: Topic[];
 }
 
-export default function Dashboard({ slips: initialSlips, categories }: DashboardProps) {
+export default function Dashboard({ slips: initialSlips, categories, topics: initialTopics }: DashboardProps) {
     const [slips, setSlips] = useState(initialSlips);
+    const [topics, setTopics] = useState(initialTopics);
     const [draggedSlip, setDraggedSlip] = useState<Slip | null>(null);
     const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
+    const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isTopicEditModalOpen, setIsTopicEditModalOpen] = useState(false);
     const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
     const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
     
@@ -162,6 +169,10 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
         setSlips(initialSlips);
     }, [initialSlips]);
 
+    useEffect(() => {
+        setTopics(initialTopics);
+    }, [initialTopics]);
+
     const handleDragStart = (slip: Slip) => {
         setDraggedSlip(slip);
     };
@@ -181,6 +192,16 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
         setEditingSlip(null);
     };
 
+    const handleTopicEdit = (topic: Topic) => {
+        setEditingTopic(topic);
+        setIsTopicEditModalOpen(true);
+    };
+
+    const handleTopicEditModalClose = () => {
+        setIsTopicEditModalOpen(false);
+        setEditingTopic(null);
+    };
+
     const handleDelete = (slip: Slip) => {
         router.delete(`/slips/${slip.id}`, {
             preserveScroll: true,
@@ -190,6 +211,20 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
             },
             onError: (errors) => {
                 console.error('Failed to delete slip:', errors);
+                // You could show a toast notification here
+            }
+        });
+    };
+
+    const handleTopicDelete = (topic: Topic) => {
+        router.delete(`/topics/${topic.id}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                // Remove the topic from local state immediately for better UX
+                setTopics(prevTopics => prevTopics.filter(t => t.id !== topic.id));
+            },
+            onError: (errors) => {
+                console.error('Failed to delete topic:', errors);
                 // You could show a toast notification here
             }
         });
@@ -221,8 +256,18 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
             .sort((a, b) => a.order - b.order);
     };
 
-    // Get MAIN category slips
+    // Get MAIN category slips and topics
     const mainSlips = getSlipsForCategory(MAIN_CATEGORY);
+    const mainTopics = topics.sort((a, b) => a.order - b.order);
+    const mainCategory = categories.find(cat => cat.name === MAIN_CATEGORY);
+
+    // Combine slips and topics for main category, sorted by order
+    const mainItems = [...mainSlips, ...mainTopics].sort((a, b) => a.order - b.order);
+
+    const handleItemCreated = () => {
+        // Refresh the page to get updated slips and topics
+        router.reload({ only: ['slips', 'topics'] });
+    };
 
     const renderSlipsList = (slipsToRender: Slip[], emptyMessage: string) => {
         if (slipsToRender.length > 0) {
@@ -238,6 +283,97 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
                     onDelete={handleDelete}
                 />
             ));
+        }
+
+        return (
+            <div className="flex items-center justify-center min-h-[200px] border border-dashed border-sidebar-border/70 rounded-xl">
+                <p className="text-muted-foreground text-sm text-center px-2">{emptyMessage}</p>
+            </div>
+        );
+    };
+
+    const renderMainItemsList = (itemsToRender: (Slip | Topic)[], emptyMessage: string) => {
+        if (itemsToRender.length > 0) {
+            const elements: React.ReactNode[] = [];
+            
+            // Add insert line at the beginning (order 1)
+            if (mainCategory) {
+                elements.push(
+                    <InsertItemLine
+                        key="insert-0"
+                        categories={categories}
+                        categoryId={mainCategory.id}
+                        insertOrder={1}
+                        onItemCreated={handleItemCreated}
+                    />
+                );
+            }
+
+            // Add items with insert lines between them
+            itemsToRender.forEach((item: Slip | Topic, index: number) => {
+                // Check if item is a slip or topic by checking for 'content' property
+                const isSlip = 'content' in item;
+                
+                if (isSlip) {
+                    const slip = item as Slip;
+                    elements.push(
+                        <SlipCard 
+                            key={`slip-${slip.id}`} 
+                            slip={slip}
+                            className="w-full"
+                            isDragging={draggedSlip?.id === slip.id}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                        />
+                    );
+                } else {
+                    const topic = item as Topic;
+                    elements.push(
+                        <TopicCard 
+                            key={`topic-${topic.id}`} 
+                            topic={topic}
+                            className="w-full"
+                            onEdit={handleTopicEdit}
+                            onDelete={handleTopicDelete}
+                        />
+                    );
+                }
+
+                // Add insert line after each item
+                if (mainCategory) {
+                    elements.push(
+                        <InsertItemLine
+                            key={`insert-${item.id}`}
+                            categories={categories}
+                            categoryId={mainCategory.id}
+                            insertOrder={item.order + 1}
+                            onItemCreated={handleItemCreated}
+                        />
+                    );
+                }
+            });
+
+            return elements;
+        }
+
+        // Even when empty, show an insert line for the first item
+        if (mainCategory) {
+            return (
+                <div className="space-y-4">
+                    <InsertItemLine
+                        key="insert-first"
+                        categories={categories}
+                        categoryId={mainCategory.id}
+                        insertOrder={1}
+                        onItemCreated={handleItemCreated}
+                    />
+                    <div className="flex items-center justify-center min-h-[200px] border border-dashed border-sidebar-border/70 rounded-xl">
+                        <p className="text-muted-foreground text-sm text-center px-2">{emptyMessage}</p>
+                    </div>
+                </div>
+            );
         }
 
         return (
@@ -348,7 +484,7 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
             <div className="flex h-full flex-1 overflow-hidden">
                 <ResizablePanelGroup direction="horizontal" className="p-4 gap-4">
                     {/* Left panel - MAIN category */}
-                    <ResizablePanel defaultSize={40} minSize={25} className="flex flex-col">
+                    <ResizablePanel defaultSize={40} minSize={25} className="flex flex-col px-2">
                         <DroppableCategoryContainer 
                             categoryName={MAIN_CATEGORY}
                             className="flex flex-col h-full rounded-lg"
@@ -356,15 +492,15 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
                             <div className="mb-4">
                                 {/* <h2 className="text-lg font-semibold mb-2">{MAIN_CATEGORY}</h2> */}
                                 {categories.find(cat => cat.name === MAIN_CATEGORY)?.description && (
-                                    <p className="text-sm text-muted-foreground italic border-l-2 border-sidebar-border pl-3 mb-4">
+                                    <p className="text-sm text-muted-foreground italic border-l-2 border-sidebar-border pl-3">
                                         {categories.find(cat => cat.name === MAIN_CATEGORY)?.description}
                                     </p>
                                 )}
                             </div>
                             <div className="flex-1 overflow-y-auto space-y-4">
-                                {renderSlipsList(
-                                    mainSlips,
-                                    `No slips in ${MAIN_CATEGORY} yet.`
+                                {renderMainItemsList(
+                                    mainItems,
+                                    `No items in ${MAIN_CATEGORY} yet.`
                                 )}
                             </div>
                         </DroppableCategoryContainer>
@@ -404,12 +540,18 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
                 </ResizablePanelGroup>
             </div>
 
-            {/* Edit Modal */}
+            {/* Edit Modals */}
             <SlipModal
                 categories={categories}
                 slip={editingSlip}
                 isOpen={isEditModalOpen}
                 onOpenChange={handleEditModalClose}
+            />
+            
+            <TopicModal
+                topic={editingTopic}
+                isOpen={isTopicEditModalOpen}
+                onOpenChange={handleTopicEditModalClose}
             />
         </AppLayout>
     );

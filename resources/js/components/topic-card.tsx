@@ -113,6 +113,13 @@ export function TopicCard({
             }}
         >
             <CardContent className="flex items-center min-h-36 p-6">
+                {/* Order Number */}
+                <div className="absolute top-2 left-2">
+                    <span className="text-xs text-primary/60 font-mono bg-primary/10 backdrop-blur-sm px-1.5 py-0.5 rounded">
+                        {topic.order}
+                    </span>
+                </div>
+
                 {/* Action Buttons */}
                 <div className={`absolute top-2 right-2 flex gap-1 transition-all duration-200 ${
                     (isHovered || showDeleteConfirm) 

@@ -101,7 +101,7 @@ export function SlipCard({
     return (
         <Card 
             ref={ref}
-            className={`relative transition-all duration-200 cursor-grab active:cursor-grabbing ${className} ${
+            className={`relative transition-all duration-200 mb-0 cursor-grab active:cursor-grabbing ${className} ${
                 isDragging ? 'opacity-50 scale-95' : ''
             } ${
                 isDraggedOver ? 'ring-2 ring-primary/50 ring-offset-2' : ''
@@ -113,6 +113,13 @@ export function SlipCard({
             }}
         >
             <CardContent className="flex items-center min-h-36 p-6">
+                {/* Order Number */}
+                <div className="absolute top-2 left-2">
+                    <span className="text-xs text-muted-foreground/60 font-mono bg-background/80 backdrop-blur-sm px-1.5 py-0.5 rounded">
+                        {slip.order}
+                    </span>
+                </div>
+
                 {/* Action Buttons */}
                 <div className={`absolute top-2 right-2 flex gap-1 transition-all duration-200 ${
                     (isHovered || showDeleteConfirm) 

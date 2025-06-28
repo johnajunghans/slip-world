@@ -52,16 +52,31 @@ class SlipController extends Controller
                     }
                 },
             ],
+            'order' => 'nullable|integer|min:1',
         ]);
 
-        // Get the next order number
-        $nextOrder = $user->slips()->max('order') + 1;
+        DB::transaction(function () use ($request, $user) {
+            $insertOrder = $request->order;
+            
+            if ($insertOrder) {
+                // Insert at specific position - increment order of existing slips
+                $user->slips()
+                    ->where('category_id', $request->category_id)
+                    ->where('order', '>=', $insertOrder)
+                    ->increment('order');
+            } else {
+                // Append to end - get the next order number
+                $insertOrder = $user->slips()
+                    ->where('category_id', $request->category_id)
+                    ->max('order') + 1;
+            }
 
-        $slip = $user->slips()->create([
-            'content' => $request->content,
-            'category_id' => $request->category_id,
-            'order' => $nextOrder,
-        ]);
+            $user->slips()->create([
+                'content' => $request->content,
+                'category_id' => $request->category_id,
+                'order' => $insertOrder,
+            ]);
+        });
 
         return redirect()->back()->with('success', 'Slip created successfully!');
     }

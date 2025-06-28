@@ -14,31 +14,47 @@ interface SlipModalProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     trigger?: React.ReactNode;
+    categoryId?: number;
+    insertOrder?: number;
 }
 
-export function SlipModal({ categories, slip, isOpen, onOpenChange, trigger }: SlipModalProps) {
+export function SlipModal({ 
+    categories, 
+    slip, 
+    isOpen, 
+    onOpenChange, 
+    trigger, 
+    categoryId, 
+    insertOrder 
+}: SlipModalProps) {
     // Find the default MAIN category
     const defaultCategory = categories.find(cat => cat.name === 'MAIN');
     
+    // Use provided categoryId or slip's category or default MAIN category
+    const initialCategoryId = categoryId || slip?.category_id || defaultCategory?.id || '';
+    
     const { data, setData, post, patch, processing, errors, reset } = useForm({
         content: slip?.content || '',
-        category_id: slip?.category_id || defaultCategory?.id || '',
+        category_id: initialCategoryId,
+        order: insertOrder || undefined,
     });
 
-    // Update form data when slip prop changes
+    // Update form data when slip prop or categoryId changes
     useEffect(() => {
         if (slip) {
             setData({
                 content: slip.content,
                 category_id: slip.category_id,
+                order: undefined, // Don't set order when editing
             });
         } else {
             setData({
                 content: '',
-                category_id: defaultCategory?.id || '',
+                category_id: categoryId || defaultCategory?.id || '',
+                order: insertOrder || undefined,
             });
         }
-    }, [slip, defaultCategory?.id]);
+    }, [slip, categoryId, insertOrder, defaultCategory?.id]);
 
     const isEditing = !!slip;
 
@@ -53,7 +69,11 @@ export function SlipModal({ categories, slip, isOpen, onOpenChange, trigger }: S
             post('/slips', {
                 onSuccess: () => {
                     reset('content');
-                    setData('category_id', defaultCategory?.id || '');
+                    setData({
+                        content: '',
+                        category_id: categoryId || defaultCategory?.id || '',
+                        order: insertOrder || undefined,
+                    });
                     onOpenChange(false);
                 },
             });
@@ -65,10 +85,15 @@ export function SlipModal({ categories, slip, isOpen, onOpenChange, trigger }: S
             setData({
                 content: slip.content,
                 category_id: slip.category_id,
+                order: undefined,
             });
         } else {
             reset('content');
-            setData('category_id', defaultCategory?.id || '');
+            setData({
+                content: '',
+                category_id: categoryId || defaultCategory?.id || '',
+                order: insertOrder || undefined,
+            });
         }
         onOpenChange(false);
     };
@@ -86,6 +111,7 @@ export function SlipModal({ categories, slip, isOpen, onOpenChange, trigger }: S
                         <Select
                             value={data.category_id.toString()}
                             onValueChange={(value) => setData('category_id', parseInt(value))}
+                            disabled={!!categoryId} // Disable category selection when categoryId is provided
                         >
                             <SelectTrigger className="w-48">
                                 <SelectValue placeholder="Select category" />
