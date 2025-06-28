@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { SlipCard } from '@/components/slip-card';
 import { SlipModal } from '@/components/create-slip-modal';
 import AppLayout from '@/layouts/app-layout';
@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
     monitorForElements,
+    dropTargetForElements,
 } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -35,33 +36,126 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
     const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+    const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
     
     const { reorderSlips } = useSlipDragDrop({
         slips,
         onReorder: setSlips,
     });
 
+    // Update slip category and place it at the top of the target category
+    const updateSlipCategory = async (slipId: number, newCategoryId: number) => {
+        try {
+            // Get slips in the target category to calculate new order
+            const targetCategorySlips = slips.filter(slip => slip.category_id === newCategoryId);
+            const newOrder = 1; // Always place at the top
+
+            const response = await fetch(`/slips/${slipId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+                body: JSON.stringify({
+                    category_id: newCategoryId,
+                    order: newOrder,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const updatedSlip = await response.json();
+            
+            // Update local state - move slip to new category at the top
+            setSlips(prevSlips => {
+                return prevSlips.map(slip => {
+                    if (slip.id === slipId) {
+                        // Update the moved slip
+                        return { ...slip, category_id: newCategoryId, order: newOrder };
+                    } else if (slip.category_id === newCategoryId && slip.order >= newOrder) {
+                        // Increment order for existing slips in target category
+                        return { ...slip, order: slip.order + 1 };
+                    }
+                    return slip;
+                });
+            });
+        } catch (error) {
+            console.error('Failed to update slip category:', error);
+        }
+    };
+
     useEffect(() => {
         return monitorForElements({
             onDrop({ source, location }) {
-                const destination = location.current.dropTargets[0];
-                if (!destination) return;
+                if (!location.current.dropTargets.length) return;
 
                 const sourceSlip = source.data.slip as Slip;
-                const destinationSlip = destination.data.slip as Slip;
+                const sourceData = source.data;
 
-                if (sourceSlip.id === destinationSlip.id) return;
+                // Look through all drop targets to find the most specific one
+                // Category containers will be deeper in the hierarchy than slip cards
+                let categoryTarget = null;
+                let slipTarget = null;
 
-                const sourceIndex = slips.findIndex(slip => slip.id === sourceSlip.id);
-                const destinationIndex = slips.findIndex(slip => slip.id === destinationSlip.id);
+                for (const target of location.current.dropTargets) {
+                    if (target.data.categoryId) {
+                        categoryTarget = target;
+                    } else if (target.data.slip) {
+                        slipTarget = target;
+                    }
+                }
 
-                if (sourceIndex === -1 || destinationIndex === -1) return;
+                // Prefer category target if available (direct category drop)
+                if (categoryTarget) {
+                    const targetCategoryId = categoryTarget.data.categoryId as number;
+                    
+                    // Only allow topics in MAIN category (though topics aren't currently shown)
+                    if (sourceData.topic && targetCategoryId !== categories.find(cat => cat.name === MAIN_CATEGORY)?.id) {
+                        console.log('Topics can only be placed in MAIN category');
+                        setDraggedSlip(null);
+                        setDragOverCategory(null);
+                        return;
+                    }
 
-                reorderSlips(sourceIndex, destinationIndex);
-                setDraggedSlip(null);
+                    // Update slip category if it's different
+                    if (sourceSlip.category_id !== targetCategoryId) {
+                        updateSlipCategory(sourceSlip.id, targetCategoryId);
+                    }
+                    
+                    setDraggedSlip(null);
+                    setDragOverCategory(null);
+                    return;
+                }
+
+                // Handle slip-to-slip drops
+                if (slipTarget) {
+                    const destinationSlip = slipTarget.data.slip as Slip;
+                    if (sourceSlip.id === destinationSlip.id) return;
+
+                    // If slips are in different categories, move to target category
+                    if (sourceSlip.category_id !== destinationSlip.category_id) {
+                        updateSlipCategory(sourceSlip.id, destinationSlip.category_id);
+                        setDraggedSlip(null);
+                        setDragOverCategory(null);
+                        return;
+                    }
+
+                    // Handle reordering within the same category
+                    const sourceIndex = slips.findIndex(slip => slip.id === sourceSlip.id);
+                    const destinationIndex = slips.findIndex(slip => slip.id === destinationSlip.id);
+
+                    if (sourceIndex === -1 || destinationIndex === -1) return;
+
+                    reorderSlips(sourceIndex, destinationIndex);
+                    setDraggedSlip(null);
+                    setDragOverCategory(null);
+                }
             },
         });
-    }, [slips, reorderSlips]);
+    }, [slips, reorderSlips, categories, updateSlipCategory]);
 
     // Update local state when props change (e.g., after server updates)
     useEffect(() => {
@@ -74,6 +168,7 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
 
     const handleDragEnd = () => {
         setDraggedSlip(null);
+        setDragOverCategory(null);
     };
 
     const handleEdit = (slip: Slip) => {
@@ -152,6 +247,50 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
         );
     };
 
+    // Droppable category container component
+    const DroppableCategoryContainer = ({ 
+        categoryName, 
+        children, 
+        className = "" 
+    }: { 
+        categoryName: string; 
+        children: React.ReactNode; 
+        className?: string;
+    }) => {
+        const ref = useRef<HTMLDivElement>(null);
+        const category = categories.find(cat => cat.name === categoryName);
+        
+        useEffect(() => {
+            const element = ref.current;
+            if (!element || !category) return;
+
+            const cleanup = dropTargetForElements({
+                element,
+                getData: () => ({ categoryId: category.id, categoryName }),
+                onDragEnter: () => setDragOverCategory(categoryName),
+                onDragLeave: () => setDragOverCategory(null),
+                onDrop: () => setDragOverCategory(null),
+            });
+
+            return cleanup;
+        }, [category, categoryName]);
+
+        if (!category) return <div className={className}>{children}</div>;
+
+        return (
+            <div 
+                ref={ref}
+                className={`${className} ${
+                    dragOverCategory === categoryName 
+                        ? 'ring-2 ring-primary/50 ring-offset-2 bg-primary/5' 
+                        : ''
+                } transition-all duration-200`}
+            >
+                {children}
+            </div>
+        );
+    };
+
     const renderCategoryColumn = (categoryName: string) => {
         const category = categories.find(cat => cat.name === categoryName);
         const categorySlips = getSlipsForCategory(categoryName);
@@ -160,7 +299,11 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
         if (!category) return null;
 
         return (
-            <div key={categoryName} className="flex flex-col h-full">
+            <DroppableCategoryContainer 
+                key={categoryName} 
+                categoryName={categoryName}
+                className="flex flex-col h-full rounded-lg"
+            >
                 <Collapsible
                     open={!isCollapsed}
                     onOpenChange={() => toggleCategoryCollapse(categoryName)}
@@ -195,7 +338,7 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
                         </div>
                     </CollapsibleContent>
                 </Collapsible>
-            </div>
+            </DroppableCategoryContainer>
         );
     };
 
@@ -206,20 +349,25 @@ export default function Dashboard({ slips: initialSlips, categories }: Dashboard
                 <ResizablePanelGroup direction="horizontal" className="p-4 gap-4">
                     {/* Left panel - MAIN category */}
                     <ResizablePanel defaultSize={40} minSize={25} className="flex flex-col">
-                        <div className="mb-4">
-                            {/* <h2 className="text-lg font-semibold mb-2">{MAIN_CATEGORY}</h2> */}
-                            {categories.find(cat => cat.name === MAIN_CATEGORY)?.description && (
-                                <p className="text-sm text-muted-foreground italic border-l-2 border-sidebar-border pl-3 mb-4">
-                                    {categories.find(cat => cat.name === MAIN_CATEGORY)?.description}
-                                </p>
-                            )}
-                        </div>
-                        <div className="flex-1 overflow-y-auto space-y-4">
-                            {renderSlipsList(
-                                mainSlips,
-                                `No slips in ${MAIN_CATEGORY} yet.`
-                            )}
-                        </div>
+                        <DroppableCategoryContainer 
+                            categoryName={MAIN_CATEGORY}
+                            className="flex flex-col h-full rounded-lg"
+                        >
+                            <div className="mb-4">
+                                {/* <h2 className="text-lg font-semibold mb-2">{MAIN_CATEGORY}</h2> */}
+                                {categories.find(cat => cat.name === MAIN_CATEGORY)?.description && (
+                                    <p className="text-sm text-muted-foreground italic border-l-2 border-sidebar-border pl-3 mb-4">
+                                        {categories.find(cat => cat.name === MAIN_CATEGORY)?.description}
+                                    </p>
+                                )}
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-4">
+                                {renderSlipsList(
+                                    mainSlips,
+                                    `No slips in ${MAIN_CATEGORY} yet.`
+                                )}
+                            </div>
+                        </DroppableCategoryContainer>
                     </ResizablePanel>
 
                     <ResizableHandle withHandle />

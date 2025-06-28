@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Icon } from '@/components/icon';
-import { GripVertical, Edit3, Trash2, X, Check } from 'lucide-react';
+import { Edit3, Trash2, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { type Topic } from '@/types';
 import {
@@ -31,20 +31,18 @@ export function TopicCard({
     onDelete
 }: TopicCardProps) {
     const ref = useRef<HTMLDivElement>(null);
-    const dragHandleRef = useRef<HTMLDivElement>(null);
     const [isDraggedOver, setIsDraggedOver] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
     useEffect(() => {
         const element = ref.current;
-        const dragHandle = dragHandleRef.current;
         
-        if (!element || !dragHandle) return;
+        if (!element) return;
 
         const cleanup = [
             draggable({
-                element: dragHandle,
+                element,
                 getInitialData: () => ({ topic }),
                 onDragStart: () => {
                     onDragStart?.(topic);
@@ -103,7 +101,7 @@ export function TopicCard({
     return (
         <Card 
             ref={ref}
-            className={`relative transition-all duration-200 bg-primary/5 border-primary/20 ${className} ${
+            className={`relative transition-all duration-200 bg-primary/5 border-primary/20 cursor-grab active:cursor-grabbing ${className} ${
                 isDragging ? 'opacity-50 scale-95' : ''
             } ${
                 isDraggedOver ? 'ring-2 ring-primary/50 ring-offset-2' : ''
@@ -115,62 +113,55 @@ export function TopicCard({
             }}
         >
             <CardContent className="flex items-center min-h-36 p-6">
-                {/* Drag Handle */}
-                <div
-                    ref={dragHandleRef}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing opacity-30 hover:opacity-60 transition-opacity"
-                    aria-label="Drag to reorder"
-                >
-                    <Icon iconNode={GripVertical} className="h-5 w-5 text-muted-foreground" />
+                {/* Action Buttons */}
+                <div className={`absolute top-2 right-2 flex gap-1 transition-all duration-200 ${
+                    (isHovered || showDeleteConfirm) 
+                        ? 'opacity-100 translate-y-0' 
+                        : 'opacity-0 -translate-y-2 pointer-events-none'
+                }`}>
+                    {showDeleteConfirm ? (
+                        <>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 w-8 p-0 bg-background/95 backdrop-blur-sm border-border/50"
+                                onClick={handleDeleteCancel}
+                            >
+                                <Icon iconNode={X} className="h-3 w-3" />
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="destructive"
+                                className="h-8 w-8 p-0"
+                                onClick={handleDeleteClick}
+                            >
+                                <Icon iconNode={Check} className="h-3 w-3" />
+                            </Button>
+                        </>
+                    ) : (
+                        <>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 w-8 p-0 bg-background/95 backdrop-blur-sm border-border/50"
+                                onClick={handleEdit}
+                            >
+                                <Icon iconNode={Edit3} className="h-3 w-3" />
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 w-8 p-0 bg-background/95 backdrop-blur-sm border-border/50 hover:bg-destructive hover:text-destructive-foreground"
+                                onClick={handleDeleteClick}
+                            >
+                                <Icon iconNode={Trash2} className="h-3 w-3" />
+                            </Button>
+                        </>
+                    )}
                 </div>
                 
-                {/* Action Buttons */}
-                {(isHovered || showDeleteConfirm) && (
-                    <div className="absolute top-2 right-2 flex gap-1">
-                        {showDeleteConfirm ? (
-                            <>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8 w-8 p-0 bg-background/95 backdrop-blur-sm border-border/50"
-                                    onClick={handleDeleteCancel}
-                                >
-                                    <Icon iconNode={X} className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    className="h-8 w-8 p-0"
-                                    onClick={handleDeleteClick}
-                                >
-                                    <Icon iconNode={Check} className="h-3 w-3" />
-                                </Button>
-                            </>
-                        ) : (
-                            <>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8 w-8 p-0 bg-background/95 backdrop-blur-sm border-border/50"
-                                    onClick={handleEdit}
-                                >
-                                    <Icon iconNode={Edit3} className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8 w-8 p-0 bg-background/95 backdrop-blur-sm border-border/50 hover:bg-destructive hover:text-destructive-foreground"
-                                    onClick={handleDeleteClick}
-                                >
-                                    <Icon iconNode={Trash2} className="h-3 w-3" />
-                                </Button>
-                            </>
-                        )}
-                    </div>
-                )}
-                
                 {/* Content */}
-                <div className="flex-1 flex flex-col items-center justify-center pl-6 text-center">
+                <div className="flex-1 flex flex-col items-center justify-center text-center">
                     <h3 className="text-xl font-semibold text-primary mb-2 break-words hyphens-auto max-w-full">
                         {topic.name}
                     </h3>
