@@ -1,20 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
-import { SlipCard } from '@/components/slip-card';
-import { TopicCard } from '@/components/topic-card';
+import { useState, useEffect } from 'react';
 import { SlipModal } from '@/components/create-slip-modal';
 import { TopicModal } from '@/components/topic-modal';
-import { InsertItemLine } from '@/components/insert-item-line';
+import { MainCategoryPanel } from '@/components/main-category-panel';
+import { CategoryColumnsPanel } from '@/components/category-columns-panel';
 import AppLayout from '@/layouts/app-layout';
 import { useSlipDragDrop } from '@/hooks/use-slip-drag-drop';
 import { type BreadcrumbItem, type Slip, type Category, type Topic } from '@/types';
 import { Head, router } from '@inertiajs/react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import {
-    monitorForElements,
-    dropTargetForElements,
-} from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
+import { monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -43,7 +37,6 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
     const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isTopicEditModalOpen, setIsTopicEditModalOpen] = useState(false);
-    const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
     const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
     
     // Get main category for drag drop hook
@@ -181,12 +174,7 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
         });
     };
 
-    const toggleCategoryCollapse = (categoryName: string) => {
-        setCollapsedCategories(prev => ({
-            ...prev,
-            [categoryName]: !prev[categoryName]
-        }));
-    };
+
 
     // Filter slips by category type
     const defaultCategoryIds = categories
@@ -389,236 +377,7 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
         router.reload({ only: ['slips', 'topics'] });
     };
 
-    const renderSlipsList = (slipsToRender: Slip[], emptyMessage: string, categoryName?: string) => {
-        if (slipsToRender.length > 0) {
-            return slipsToRender.map((slip: Slip) => (
-                <SlipCard 
-                    key={slip.id} 
-                    slip={slip}
-                    className="w-full"
-                    showOrderNumber={categoryName === MAIN_CATEGORY}
-                    isDragging={draggedSlip?.id === slip.id}
-                    draggedSlipCategoryId={draggedSlip?.category_id || null}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                />
-            ));
-        }
 
-        return (
-            <div className="flex items-center justify-center min-h-[200px] border border-dashed border-sidebar-border/70 rounded-xl">
-                <p className="text-muted-foreground text-sm text-center px-2">{emptyMessage}</p>
-            </div>
-        );
-    };
-
-    const renderMainItemsList = (itemsToRender: (Slip | Topic)[], emptyMessage: string) => {
-        if (itemsToRender.length > 0) {
-            const elements: React.ReactNode[] = [];
-            
-            // Add insert line at the beginning (order 1)
-            if (mainCategory) {
-                elements.push(
-                    <InsertItemLine
-                        key="insert-0"
-                        categories={categories}
-                        categoryId={mainCategory.id}
-                        insertOrder={1}
-                        onItemCreated={handleItemCreated}
-                    />
-                );
-            }
-
-            // Add items with insert lines between them
-            itemsToRender.forEach((item: Slip | Topic, index: number) => {
-                // Check if item is a slip or topic by checking for 'content' property
-                const isSlip = 'content' in item;
-                
-                if (isSlip) {
-                    const slip = item as Slip;
-                    elements.push(
-                        <SlipCard 
-                            key={`slip-${slip.id}`} 
-                            slip={slip}
-                            className="w-full"
-                            showOrderNumber={true} // Always show order numbers in main category
-                            isDragging={draggedSlip?.id === slip.id}
-                            draggedSlipCategoryId={draggedSlip?.category_id || null}
-                            onDragStart={handleDragStart}
-                            onDragEnd={handleDragEnd}
-                            onEdit={handleEdit}
-                            onDelete={handleDelete}
-                        />
-                    );
-                } else {
-                    const topic = item as Topic;
-                    elements.push(
-                        <TopicCard 
-                            key={`topic-${topic.id}`} 
-                            topic={topic}
-                            className="w-full"
-                            isDragging={draggedTopic?.id === topic.id}
-                            draggedSlipCategoryId={draggedSlip?.category_id || null}
-                            draggedTopicId={draggedTopic?.id || null}
-                            onDragStart={handleTopicDragStart}
-                            onDragEnd={handleDragEnd}
-                            onEdit={handleTopicEdit}
-                            onDelete={handleTopicDelete}
-                        />
-                    );
-                }
-
-                // Add insert line after each item
-                if (mainCategory) {
-                    elements.push(
-                        <InsertItemLine
-                            key={`insert-${item.id}`}
-                            categories={categories}
-                            categoryId={mainCategory.id}
-                            insertOrder={item.order + 1}
-                            onItemCreated={handleItemCreated}
-                        />
-                    );
-                }
-            });
-
-            return elements;
-        }
-
-        // Even when empty, show an insert line for the first item
-        if (mainCategory) {
-            return (
-                <div className="space-y-4">
-                    <InsertItemLine
-                        key="insert-first"
-                        categories={categories}
-                        categoryId={mainCategory.id}
-                        insertOrder={1}
-                        onItemCreated={handleItemCreated}
-                    />
-                    <div className="flex items-center justify-center min-h-[200px] border border-dashed border-sidebar-border/70 rounded-xl">
-                        <p className="text-muted-foreground text-sm text-center px-2">{emptyMessage}</p>
-                    </div>
-                </div>
-            );
-        }
-
-        return (
-            <div className="flex items-center justify-center min-h-[200px] border border-dashed border-sidebar-border/70 rounded-xl">
-                <p className="text-muted-foreground text-sm text-center px-2">{emptyMessage}</p>
-            </div>
-        );
-    };
-
-    // Droppable category container component
-    const DroppableCategoryContainer = ({ 
-        categoryName, 
-        children, 
-        className = "" 
-    }: { 
-        categoryName: string; 
-        children: React.ReactNode; 
-        className?: string;
-    }) => {
-        const ref = useRef<HTMLDivElement>(null);
-        const category = categories.find(cat => cat.name === categoryName);
-        
-        useEffect(() => {
-            const element = ref.current;
-            if (!element || !category) return;
-
-            // For topics, they can only be in MAIN category, so other categories should not be droppable
-            if (draggedTopic && category.name !== MAIN_CATEGORY) return;
-            
-            // Only make category droppable if:
-            // 1. No item is being dragged, OR
-            // 2. The dragged slip is from a different category
-            const shouldBeDropTarget = 
-                (!draggedSlip && !draggedTopic) || // No drag in progress
-                (draggedSlip && draggedSlip.category_id !== category.id); // Slip from different category
-            
-            if (!shouldBeDropTarget) return;
-
-            const cleanup = dropTargetForElements({
-                element,
-                getData: () => ({ categoryId: category.id, categoryName }),
-                onDragEnter: () => setDragOverCategory(categoryName),
-                onDragLeave: () => setDragOverCategory(null),
-                onDrop: () => setDragOverCategory(null),
-            });
-
-            return cleanup;
-        }, [category, categoryName, draggedSlip, draggedTopic]);
-
-        if (!category) return <div className={className}>{children}</div>;
-
-        return (
-            <div 
-                ref={ref}
-                className={`${className} ${
-                    dragOverCategory === categoryName 
-                        ? 'ring-2 ring-primary/50 ring-offset-2 bg-primary/5' 
-                        : ''
-                } transition-all duration-200`}
-            >
-                {children}
-            </div>
-        );
-    };
-
-    const renderCategoryColumn = (categoryName: string) => {
-        const category = categories.find(cat => cat.name === categoryName);
-        const categorySlips = getSlipsForCategory(categoryName);
-        const isCollapsed = collapsedCategories[categoryName];
-
-        if (!category) return null;
-
-        return (
-            <DroppableCategoryContainer 
-                key={categoryName} 
-                categoryName={categoryName}
-                className="flex flex-col h-full rounded-lg"
-            >
-                <Collapsible
-                    open={!isCollapsed}
-                    onOpenChange={() => toggleCategoryCollapse(categoryName)}
-                    className="flex flex-col h-full"
-                >
-                    <CollapsibleTrigger className="flex items-center justify-between p-3 text-left bg-sidebar-accent/50 hover:bg-sidebar-accent rounded-lg transition-colors mb-3 shrink-0">
-                        <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-sm truncate">{categoryName}</h3>
-                            <div className="flex items-center justify-between mt-1">
-                                <span className="text-xs text-muted-foreground">
-                                    {categorySlips.length} slip{categorySlips.length !== 1 ? 's' : ''}
-                                </span>
-                                {isCollapsed ? (
-                                    <ChevronRight className="h-3 w-3" />
-                                ) : (
-                                    <ChevronDown className="h-3 w-3" />
-                                )}
-                            </div>
-                        </div>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="flex-1 flex flex-col min-h-0">
-                        <div className="flex-1 overflow-y-auto space-y-3">
-                            {category.description && (
-                                <p className="text-xs text-muted-foreground italic border-l-2 border-sidebar-border pl-2 mb-3">
-                                    {category.description}
-                                </p>
-                            )}
-                            {renderSlipsList(
-                                categorySlips,
-                                `No slips in ${categoryName} yet.`,
-                                categoryName
-                            )}
-                        </div>
-                    </CollapsibleContent>
-                </Collapsible>
-            </DroppableCategoryContainer>
-        );
-    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -627,57 +386,45 @@ export default function Dashboard({ slips: initialSlips, categories, topics: ini
                 <ResizablePanelGroup direction="horizontal" className="p-4 gap-4">
                     {/* Left panel - MAIN category */}
                     <ResizablePanel defaultSize={40} minSize={25} className="flex flex-col px-2">
-                        <DroppableCategoryContainer 
-                            categoryName={MAIN_CATEGORY}
-                            className="flex flex-col h-full rounded-lg"
-                        >
-                            <div className="mb-4">
-                                {/* <h2 className="text-lg font-semibold mb-2">{MAIN_CATEGORY}</h2> */}
-                                {categories.find(cat => cat.name === MAIN_CATEGORY)?.description && (
-                                    <p className="text-sm text-muted-foreground italic border-l-2 border-sidebar-border pl-3">
-                                        {categories.find(cat => cat.name === MAIN_CATEGORY)?.description}
-                                    </p>
-                                )}
-                            </div>
-                            <div className="flex-1 overflow-y-auto space-y-4">
-                                {renderMainItemsList(
-                                    mainItems,
-                                    `No items in ${MAIN_CATEGORY} yet.`
-                                )}
-                            </div>
-                        </DroppableCategoryContainer>
+                        {mainCategory && (
+                            <MainCategoryPanel
+                                category={mainCategory}
+                                items={mainItems}
+                                draggedSlip={draggedSlip}
+                                draggedTopic={draggedTopic}
+                                dragOverCategory={dragOverCategory}
+                                onDragStart={handleDragStart}
+                                onTopicDragStart={handleTopicDragStart}
+                                onDragEnd={handleDragEnd}
+                                onEdit={handleEdit}
+                                onDelete={handleDelete}
+                                onTopicEdit={handleTopicEdit}
+                                onTopicDelete={handleTopicDelete}
+                                onItemCreated={handleItemCreated}
+                                onDragOverCategory={setDragOverCategory}
+                                categories={categories}
+                            />
+                        )}
                     </ResizablePanel>
 
                     <ResizableHandle withHandle />
 
                     {/* Right panel - Other categories in columns */}
                     <ResizablePanel defaultSize={60} minSize={35} className="flex flex-col max-h-[calc(100vh-116px)] overflow-y-auto">
-                        <div className="flex-1 flex flex-col overflow-hidden">
-                            {/* Category columns */}
-                            <div className="flex-1 flex gap-3 overflow-hidden">
-                                {OTHER_DEFAULT_CATEGORIES.map(categoryName => (
-                                    <div 
-                                        key={categoryName} 
-                                        className={`flex-1 min-w-0 ${collapsedCategories[categoryName] ? 'max-w-[120px]' : ''}`}
-                                    >
-                                        {renderCategoryColumn(categoryName)}
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Custom categories section */}
-                            {nonDefaultSlips.length > 0 && (
-                                <div className="mt-4 pt-4 border-t border-sidebar-border">
-                                    <h3 className="font-semibold mb-3">Custom Categories</h3>
-                                    <div className="space-y-3 max-h-32 overflow-y-auto">
-                                        {renderSlipsList(
-                                            nonDefaultSlips,
-                                            "No slips in custom categories."
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        <CategoryColumnsPanel
+                            categories={categories}
+                            categoryNames={OTHER_DEFAULT_CATEGORIES}
+                            slips={slips}
+                            draggedSlip={draggedSlip}
+                            draggedTopic={draggedTopic}
+                            dragOverCategory={dragOverCategory}
+                            nonDefaultSlips={nonDefaultSlips}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                            onDragOverCategory={setDragOverCategory}
+                        />
                     </ResizablePanel>
                 </ResizablePanelGroup>
             </div>
